@@ -71,6 +71,8 @@ def record_vote(nickname, rid, vtype, arrival):
     with _lock:
         if rid != _state["id"]:
             return False, {"error": "이전 테스트입니다. 새로고침하세요."}
+        if _state["status"] == "closed":
+            return False, {"error": "투표가 마감되었습니다."}
         if _state["status"] != "armed" or arrival < _state["openAt"]:
             return False, {"error": "아직 열리지 않았습니다."}
 
@@ -198,6 +200,9 @@ color:var(--foreground);border-radius:8px;padding:11px 12px;font-size:1rem;outli
 </div>
 <script>
 const TL={Succession:"전승",Awaken:"각성",Else:"기타(아처, 샤이, 스칼라)"};
+const TS={Succession:"전승",Awaken:"각성",Else:"기타"};
+// 순위표에 "매구 (전승)" 형태로 표시
+const clsLabel=e=>e.className?`${e.className} (${TS[e.classType]||'?'})`:'직업 미등록';
 const ELSE_C=["아처","샤이","스칼라"];
 const DUAL_C=["워리어","소서러","레인저","자이언트","금수랑","무사","발키리","매화","위자드","위치",
 "쿠노이치","닌자","다크나이트","격투가","미스틱","란","가디언","하사신","노바","세이지","커세어",
@@ -270,15 +275,18 @@ async function castVote(type){
     if(j.ok){
       myVote=j.votingType;myRank=j.rank;myMs=j.deltaMs;board=j.board;
       msg=j.duplicated?`이미 ${VL[j.votingType]}를 선택한 상태입니다.`:`${VL[j.votingType]} 선택.`;
+      // 본사이트와 동일하게: 직업이 이미 있으면 종류 선택을 건너뛰고 직업 목록부터 표시
+      if(CLASS_SHOW.includes(j.votingType)&&pickType===null&&prof)pickType=prof.type;
     }else{err=j.error;}
   }catch(e){err='통신 오류가 발생했습니다. 다시 시도하세요.';}
   busy=false;render();
 }
 async function pickClass(name){
   prof={name,type:pickType};
-  saveProf(prof);                 // 먼저 브라우저에 저장 (서버가 죽어도 유지됨)
+  saveProf(prof);                 // 먼저 브라우저에 저장 (서버가 재시작돼도 유지됨)
   await syncProfToServer();
-  pickType=null;screen='race';render();
+  await pull();                   // 순위표의 내 직업 표시를 즉시 갱신
+  render();
 }
 
 function classPickerHTML(){
@@ -306,15 +314,18 @@ function processHTML(){
   ${myRank?`<p class="message">서버 도착 ${myMs}ms · <strong>${myRank}등</strong></p>`:''}
   ${msg?`<p class="notice">${esc(msg)}</p>`:''}
   ${err?`<p class="error">${esc(err)}</p>`:''}
-  ${!live?'<p class="notice">아직 열리지 않았습니다. 대기중 탭에서 카운트다운을 확인하세요.</p>':''}
+  ${!live?(st&&st.status==='closed'
+      ?'<p class="notice">투표가 마감되었습니다.</p>'
+      :'<p class="notice">아직 열리지 않았습니다. 대기중 탭에서 카운트다운을 확인하세요.</p>'):''}
   ${myVote&&CLASS_SHOW.includes(myVote)?`<div class="classSection">
-    ${prof?`<p class="notice">현재 직업: ${esc(prof.name)} (${TL[prof.type].split('(')[0].trim()})</p>`
-          :`<p class="warning">⚠️ 직업 미등록! 상단 '직업' 탭에서 등록해주세요.</p>`}</div>`:''}
+    ${prof?`<p class="notice">현재 직업: ${esc(prof.name)} (${TS[prof.type]})<br>직업을 변경하시려면 아래에서 다시 선택해주세요.</p>`
+          :`<p class="warning">⚠️ 직업 미등록! 아래에서 직업을 등록해야 인원제한결과에 포함됩니다.</p>`}
+    ${classPickerHTML()}</div>`:''}
   <div class="classSection"><p class="dateLine">순위 (서버 도착 순)</p>
   <ul class="summaryList">${board.length===0?'<li class="summaryItem"><span>아직 신청자가 없습니다.</span></li>'
     :board.map((e,i)=>`<li class="rankItem ${i===0?'first':''} ${e.nickname===nick?'me':''}">
       <span class="rankNo">${i+1}</span><span class="rankName">${esc(e.nickname)}</span>
-      <span class="rankCls">${esc(VL[e.votingType])}${e.className?' · '+esc(e.className):''}</span>
+      <span class="rankCls">${esc(VL[e.votingType])} · ${esc(clsLabel(e))}</span>
       <span class="rankMs">${e.deltaMs}ms</span></li>`).join('')}</ul></div>`;
 }
 
@@ -331,15 +342,6 @@ function waitHTML(){
     :`<div class="countdown"><span class="countdownSegment">${pad(Math.floor(s/3600))}:${pad(Math.floor(s%3600/60))}:${pad(s%60)}</span></div>`}`;
 }
 
-function classHTML(){
-  return `<h1 class="title">내 직업</h1>
-  ${prof?`<p class="ok">✅ ${esc(prof.name)} (${TL[prof.type].split('(')[0].trim()}) — 이 브라우저에 저장되어 있습니다.</p>
-          <p class="instruction" style="margin-top:8px">서버가 재시작돼도 유지됩니다. 아래에서 변경할 수 있습니다.</p>`
-        :`<p class="warning">⚠️ 직업 미등록! 실전에서는 미리 등록해두면 신청 버튼만 누르면 되므로 그만큼 빨라집니다.</p>
-          <p class="instruction" style="margin-top:8px">아래에서 지금 등록해두세요.</p>`}
-  ${classPickerHTML()}`;
-}
-
 function completeHTML(){
   if(!last)return `<h1 class="title">이전 테스트</h1><p class="instruction">아직 완료된 테스트가 없습니다.</p>`;
   const c=last.counts;
@@ -350,7 +352,7 @@ function completeHTML(){
   <ul class="summaryList">${last.board.map((e,i)=>`
     <li class="rankItem ${i===0?'first':''} ${e.nickname===nick?'me':''}">
     <span class="rankNo">${i+1}</span><span class="rankName">${esc(e.nickname)}</span>
-    <span class="rankCls">${esc(VL[e.votingType])}${e.className?' · '+esc(e.className):''}</span>
+    <span class="rankCls">${esc(VL[e.votingType])} · ${esc(clsLabel(e))}</span>
     <span class="rankMs">${e.deltaMs}ms</span></li>`).join('')}</ul>`;
 }
 
@@ -359,30 +361,30 @@ function render(){
     if($('ni'))return;
     $('hdrNick').textContent='';$('hdrOut').style.display='none';
     $('card').innerHTML=`<h1 class="title">거점전 선착순 연습</h1>
-      <p class="instruction">가문명을 입력하고 입장하세요. 같은 주소로 접속한 길드원 전원이 같은 테스트를 함께 뜁니다.</p>
+      <p class="instruction">가문명을 입력하고 입장하세요. 같은 주소로 접속한 길드원 전원이 동일한 테스트에 함께 참여합니다.</p>
       <div class="loginRow"><input class="loginInput" id="ni" placeholder="가문명 입력" maxlength="16">
       <button class="voteButton primary" id="jb" style="padding:11px 18px;font-size:.9rem">입장</button></div>`;
     const i=$('ni');
     const go=async()=>{const v=i.value.trim();if(!v)return;
       nick=v;try{localStorage.setItem(LS_NICK,v);}catch(e){}
       await syncProfToServer();
-      tab=prof?'process':'myclass';   // 직업 없으면 바로 등록 화면으로
+      tab='process';
       render();};
     $('jb').onclick=go;i.addEventListener('keydown',e=>{if(e.key==='Enter')go()});i.focus();
     return;
   }
-  $('hdrNick').textContent=nick+(prof?` · ${prof.name}`:'');
+  $('hdrNick').textContent=nick;
   $('hdrOut').style.display='';
   $('hdrOut').onclick=()=>{
     try{localStorage.removeItem(LS_NICK);}catch(e){}
     nick=null;render();
   };
 
-  const tabs={process:'진행중',wait:'대기중',myclass:'직업',complete:'이전'};
-  $('card').innerHTML=`<div class="tabBar" role="tablist" style="grid-template-columns:repeat(4,1fr)">
+  const tabs={process:'진행중',wait:'대기중',complete:'이전 테스트'};
+  $('card').innerHTML=`<div class="tabBar" role="tablist">
     ${Object.keys(tabs).map(k=>`<button class="tabButton ${tab===k?'tabButtonActive':''}" data-tab="${k}">${tabs[k]}</button>`).join('')}
     </div><div class="tabContent">
-    ${tab==='process'?processHTML():tab==='wait'?waitHTML():tab==='myclass'?classHTML():completeHTML()}</div>
+    ${tab==='process'?processHTML():tab==='wait'?waitHTML():completeHTML()}</div>
     <div class="hostBar"><button class="hostToggle" id="ht">${hostOpen?'▲ 관리자 모드 닫기':'▼ 관리자 모드 (테스트 진행)'}</button>
     ${hostOpen?`<div class="hostRow">
       <button class="hostBtn" data-d="5">5초 후</button>
@@ -407,7 +409,6 @@ function render(){
   await syncClock();
   await syncProfToServer();
   await pull();
-  if(nick&&!prof)tab='myclass';
   render();
   setInterval(pull,1000);
   setInterval(()=>{if(tab==='wait'&&st&&st.status==='armed')render();},200);
@@ -476,7 +477,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/reset":
             with _lock:
                 archive_current()
-                _state["status"] = "idle"
+                # 아직 한 번도 안 연 상태(idle)와 구분하기 위해 closed 로 표시
+                _state["status"] = "closed"
                 _state["openAt"] = 0.0
                 return self._json({"ok": True, "state": _state})
 
@@ -486,6 +488,13 @@ class Handler(BaseHTTPRequestHandler):
             if nick and name and ctype:
                 with _lock:
                     _profiles[nick] = {"name": name, "type": ctype}
+                    # 이미 이번 라운드에 신청한 상태라면 순위표의 직업 표시도 즉시 갱신
+                    # (등수와 도착 시각은 최초 클릭 기준 그대로 유지)
+                    for r in _entries.get(_state["id"], []):
+                        if r["nickname"] == nick:
+                            r["className"] = name
+                            r["classType"] = ctype
+                            break
                     return self._json({"profile": _profiles[nick]})
             return self._json({"profile": None})
 
