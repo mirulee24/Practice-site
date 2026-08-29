@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-거점전 선착순 신청 연습 사이트 (웹 전용)
+거점전 선착순 신청 연습 사이트 (신규 디자인 대응 / 웹 전용)
 ────────────────────────────────────────────────────────────
-· 등수는 "요청이 서버에 도착한 순서"로 결정됩니다 (실전과 동일 기준).
-· 직업은 브라우저에 저장되고 접속할 때마다 서버로 자동 재등록됩니다.
-  → 서버가 재시작(Render 슬립/재배포)돼도 직업을 다시 고를 필요가 없습니다.
-· 표준 라이브러리만 사용. 외부 패키지 불필요.
+· 본사이트 개편(종이 테마 · /vote · /classes 분리)에 맞춰 새로 제작
+· 등수는 "요청이 서버에 도착한 순서"로 결정 (실전과 동일 기준)
+· 직업은 브라우저에 저장 후 접속 시 서버로 자동 재등록
+  → Render 슬립/재배포로 서버가 초기화돼도 다시 고를 필요 없음
+· 표준 라이브러리만 사용
 
 실행:  python practice_site.py
 ────────────────────────────────────────────────────────────
@@ -20,12 +21,15 @@ from urllib.parse import urlparse, parse_qs
 
 PORT = int(os.environ.get("PORT", "8000"))
 
-VOTE_LABEL = {"attend": "참여", "non_attend": "미참", "boarding": "부속", "late_attend": "늦참"}
+VOTE_LABEL = {"attend": "참여", "boarding": "부속", "late_attend": "늦참", "non_attend": "미참"}
+VOTE_ORDER = ["attend", "boarding", "late_attend", "non_attend"]
+ATTEND_TYPES = ["attend", "boarding"]
 
 _lock = threading.Lock()
 _state = {"id": "none", "status": "idle", "openAt": 0.0, "round": 0}
-_entries = {}     # roundId -> [ {nickname, arrivalMs, deltaMs, votingType, className, classType} ]
-_profiles = {}    # nickname -> {"name":..., "type":...}  (클라이언트가 접속 시 자동 재등록)
+_entries = {}     # roundId -> [ {...} ]
+_profiles = {}    # nickname -> {"name":..., "type":...}
+_history = []     # 최근 라운드 요약 (최대 6개)
 _last = None
 
 
@@ -40,13 +44,16 @@ def board_of(rid):
 
 
 def archive_current():
-    global _last
+    global _last, _history
     b = board_of(_state["id"])
     if b:
         counts = {}
         for e in b:
             counts[e["votingType"]] = counts.get(e["votingType"], 0) + 1
-        _last = {"round": _state["round"], "board": b, "counts": counts}
+        _last = {"round": _state["round"], "board": b, "counts": counts,
+                 "openAt": _state["openAt"]}
+        _history = ([{"round": _state["round"], "count": len(b), "openAt": _state["openAt"]}]
+                    + _history)[:6]
 
 
 def arm_round(delay_sec: float):
@@ -70,7 +77,7 @@ def record_vote(nickname, rid, vtype, arrival):
         return False, {"error": "알 수 없는 선택지입니다."}
     with _lock:
         if rid != _state["id"]:
-            return False, {"error": "이전 테스트입니다. 새로고침하세요."}
+            return False, {"error": "이전 설문입니다. 새로고침하세요."}
         if _state["status"] == "closed":
             return False, {"error": "투표가 마감되었습니다."}
         if _state["status"] != "armed" or arrival < _state["openAt"]:
@@ -94,7 +101,7 @@ def record_vote(nickname, rid, vtype, arrival):
         b = board_of(rid)
         rank = next(i + 1 for i, r in enumerate(b) if r["nickname"] == nickname)
         res = {"rank": rank, "deltaMs": mine["deltaMs"], "votingType": vtype,
-               "duplicated": dup, "board": b}
+               "duplicated": dup, "votedAt": mine["arrivalMs"], "board": b}
     if not dup:
         print(f"  {rank:>3}등  {nickname:<14} {VOTE_LABEL[vtype]:<3} +{res['deltaMs']}ms")
     return True, res
@@ -104,143 +111,286 @@ HTML = r"""<!DOCTYPE html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>거점전 선착순 연습</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Lora:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Nanum+Myeongjo:wght@400;700&display=swap" rel="stylesheet">
 <style>
-:root{--color-bg-deep:#0c0a12;--color-bg-mid:#17131f;--color-accent:#a56cff;
---color-accent-soft:#a56cff29;--color-text-main:#f2eee6;--color-text-dim:#a79fb8;
---color-text-faint:#5c5568;--color-line:#ffffff14}
-:root{--background:var(--color-bg-deep);--foreground:var(--color-text-main);
---card-bg:var(--color-bg-mid);--border-color:var(--color-line);
---muted:var(--color-text-dim);--accent:var(--color-accent)}
-html{color-scheme:dark;height:100%}
+:root{--color-paper:#f3f2f2;--color-surface:#eae9e9;--color-ink:#201f1d;--color-ink-dim:#605d5d;
+--color-ink-faint:#7d7979;--color-hairline:#201f1d29;--color-rule:#201f1d1f;--color-accent:#b68235;
+--color-accent-deep:#7d5411;--color-accent-deeper:#5a3b0a;--color-accent-tint:#fff3e4;
+--color-dark:#1a1918;--color-dark-ink:#f3f2f2;--color-dark-ink-soft:#e2e0dd;--color-dark-ink-dim:#bab6b6;
+--color-dark-accent:#e1ad66;--color-dark-accent-bright:#facb8d;--color-mark-succession:#5b7fb5;
+--color-mark-awakening:#b0555f;--color-mark-neutral:#201f1d38;--shadow-card:0 3px 10px #2d2b2b1f;
+--scrim-band:linear-gradient(180deg,transparent,#1a1918d1)}
+:root{--font-heading:"Cormorant Garamond","Nanum Myeongjo",Georgia,serif;
+--font-prose:"Lora","Nanum Myeongjo",Georgia,serif;
+--font-body:"Lora","Noto Sans KR",Georgia,sans-serif;
+--font-mono:"JetBrains Mono",ui-monospace,monospace;
+--background:var(--color-paper);--foreground:var(--color-ink);--card-bg:var(--color-paper);
+--border-color:var(--color-hairline);--muted:var(--color-ink-dim);--accent:var(--color-accent)}
+html{color-scheme:light;height:100%}
 html,body{max-width:100vw;overflow-x:hidden}
-body{min-height:100%;color:var(--foreground);background:var(--background);
--webkit-font-smoothing:antialiased;flex-direction:column;display:flex;
-font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Apple SD Gothic Neo,Noto Sans KR,Roboto,sans-serif}
+body{min-height:100%;color:var(--color-ink);background:var(--color-paper);font-family:var(--font-body);
+-webkit-font-smoothing:antialiased;flex-direction:column;display:flex}
 *{box-sizing:border-box;margin:0;padding:0}
+h1,h2,h3,h4{font-family:var(--font-heading);font-weight:600}
+a{color:inherit;text-decoration:none}
 button{font-family:inherit}
-.main{flex-direction:column;align-items:center;gap:16px;min-height:100dvh;
-padding:24px 16px 48px;display:flex}
-.header{justify-content:space-between;align-items:center;width:100%;max-width:480px;display:flex}
+a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
+
+/* ── SiteHeader ── */
+.siteHeader{border-bottom:1px solid var(--color-hairline);flex-wrap:wrap;align-items:center;
+gap:18.4px;padding:27.6px 46px 18.4px;display:flex}
+.brandBlock{align-items:baseline;gap:13.8px;margin-right:auto;display:flex}
+.brand{font-family:var(--font-heading);white-space:nowrap;font-size:22px;font-weight:600}
+.kicker{font-family:var(--font-mono);letter-spacing:.16em;color:var(--color-ink-dim);font-size:10px}
+.nav{align-items:center;gap:18.4px;display:flex}
+.navLink,.navLinkSoon{color:var(--color-ink-dim);font-size:12.5px;cursor:pointer;background:0 0;border:none}
+.navLink:hover{color:var(--color-accent-deep)}
+.navLinkActive{color:var(--color-ink);border-bottom:1px solid var(--color-accent)}
+.navLinkSoon{color:var(--color-ink-faint);cursor:default}
+.logoutButton{border:1px solid var(--color-hairline);color:var(--color-ink-dim);cursor:pointer;
+background:0 0;border-radius:4px;padding:6px 13.8px;font-size:11.5px;order:1}
+.logoutButton:hover{border-color:var(--color-accent);color:var(--color-accent-deep)}
+@media (max-width:768px){.siteHeader{gap:11px;padding:18.4px 22px}.brand{font-size:19px}
+.nav{flex-basis:100%;order:2;gap:15px}.navLink,.navLinkSoon{white-space:nowrap;font-size:11.5px}}
+
+/* ── 홈 ── */
+.homeMain{background:var(--color-paper);width:100%;max-width:1120px;min-height:100dvh;margin:0 auto}
+.hero{background:var(--color-dark);height:320px;position:relative;overflow:hidden}
+.heroScrim{pointer-events:none;background:var(--scrim-band);height:72%;position:absolute;bottom:0;left:0;right:0}
+.heroPattern{position:absolute;inset:0;opacity:.5;
+background:radial-gradient(circle at 22% 28%,#3a3630 0,transparent 55%),
+radial-gradient(circle at 78% 12%,#2b2823 0,transparent 45%),
+repeating-linear-gradient(115deg,#1f1e1c 0 22px,#1a1918 22px 44px)}
+.heroContent{text-shadow:0 1px 4px #1a1918d9,0 0 18px #1a19188c;justify-content:space-between;
+align-items:flex-end;gap:36.8px;display:flex;position:absolute;bottom:27.6px;left:46px;right:46px}
+.heroKicker{font-family:var(--font-mono);letter-spacing:.04em;color:var(--color-dark-accent-bright);font-size:10.5px}
+.heroTitle{font-family:var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:.02em;
+color:var(--color-dark-ink);margin-top:9.2px;font-size:46px;font-weight:400;line-height:1.05}
+.heroActions{flex-wrap:wrap;align-items:center;gap:13.8px;margin-top:18.4px;display:flex}
+.heroButton,.heroButtonGhost{border-radius:4px;align-items:center;min-height:44px;padding:9.2px 22px;
+font-size:13.5px;display:inline-flex;cursor:pointer}
+.heroButton{border:1px solid var(--color-dark-accent);color:var(--color-dark-accent-bright);background:#e1ad6624}
+.heroButton:hover{background:#e1ad663d}
+.heroButtonGhost{color:var(--color-dark-ink-soft);border:1px solid #f3f2f247;background:0 0}
+.heroMyVote{font-family:var(--font-mono);color:var(--color-dark-ink-soft);font-size:11.5px}
+.homeBody{padding:27.6px 46px 46px}
+.columns{grid-template-columns:1fr 280px;align-items:start;gap:36.8px;display:grid}
+.sectionHeader{border-bottom:1px solid var(--color-hairline);justify-content:space-between;
+align-items:baseline;padding-bottom:9.2px;display:flex}
+.sectionHeaderSpaced{margin-top:36.8px}
+.sectionTitle{font-size:18px}
+.sectionMeta{font-family:var(--font-mono);color:var(--color-ink-dim);font-size:11px}
+.sectionLink{color:var(--color-accent-deep);font-size:11.5px;cursor:pointer}
+.sectionLink:hover{color:var(--color-accent-deeper)}
+.dayGrid{grid-template-columns:repeat(3,1fr);gap:9.2px;margin-top:18.4px;display:grid}
+.dayCard{border:1px solid var(--color-hairline);background:0 0;border-radius:4px;flex-direction:column;
+gap:9.2px;min-height:84px;padding:13.8px 11px;display:flex}
+.dayCardLive{border-color:var(--color-accent);background:var(--color-accent-tint)}
+.dayCardTop{justify-content:space-between;align-items:baseline;display:flex}
+.dayLabel{font-family:var(--font-heading);color:var(--color-ink);font-size:24px;font-weight:600}
+.dayLabelLive{color:var(--color-accent-deeper)}
+.dayDate{font-family:var(--font-mono);color:var(--color-ink-dim);font-size:10.5px}
+.dayState{font-family:var(--font-mono);letter-spacing:.02em;color:var(--color-ink-dim);font-size:10px}
+.dayStateLive{color:var(--color-accent-deep)}
+.dayVote{color:var(--color-ink-faint);margin-top:auto;font-size:12.5px}
+.dayVoteSet{color:var(--color-accent-deep)}
+.classCardHome{border:1px solid var(--color-accent);background:var(--color-accent-tint);border-radius:4px;
+align-items:center;gap:13.8px;margin-top:18.4px;padding:9.2px 11px;display:flex}
+.classCardEmpty{border:1px dashed #201f1d42;border-radius:4px;flex-direction:column;gap:4px;
+margin-top:18.4px;padding:13.8px 11px;display:flex}
+.classNameTxt{color:var(--color-accent-deeper);font-size:13.5px}
+.classCardEmpty .classNameTxt{color:var(--color-ink)}
+.classSub{color:var(--color-accent-deep);font-size:11px}
+.classCardEmpty .classSub{color:var(--color-ink-dim);line-height:1.5}
+.classNote{color:#201f1db8;margin-top:13.8px;font-size:11.5px;line-height:1.75}
+@media (max-width:768px){.hero{height:190px}
+.heroScrim{background:linear-gradient(#1a19184d 0%,#1a191880 42%,#1a1918f2 100%);height:100%}
+.heroContent{bottom:18.4px;left:22px;right:22px;flex-direction:column;align-items:flex-start;gap:13.8px}
+.heroTitle{margin-top:4px;font-size:26px;line-height:1.15}
+.homeBody{padding:18.4px 22px 36.8px}.columns{grid-template-columns:1fr;gap:27.6px}
+.dayGrid{grid-template-columns:repeat(3,1fr);gap:6px}
+.dayCard{text-align:center;align-items:center;gap:4px;min-height:0;padding:9.2px 4px}
+.dayCardTop{flex-direction:column;align-items:center;gap:2px}
+.dayLabel{font-size:17px}.dayDate{font-size:9.5px}.dayVote{display:none}}
+
+/* ── 로그인 ── */
+.loginMain{background:var(--color-paper);justify-content:center;align-items:center;min-height:100dvh;
+padding:24px;display:flex}
+.loginHero{text-align:center;flex-direction:column;align-items:center;gap:8px;display:flex}
+.loginBrand{font-size:46px;font-weight:400;line-height:1.05}
+.loginTagline{color:var(--color-ink-dim);font-size:13px}
+.loginRow{gap:8px;margin-top:18.4px;display:flex;width:100%;max-width:340px}
+.loginInput{flex:1;min-width:0;border:1px solid var(--color-hairline);background:var(--color-paper);
+color:var(--color-ink);border-radius:4px;padding:11px 12px;font-size:16px;font-family:inherit;outline:none}
+.loginInput:focus{border-color:var(--color-accent)}
+.loginButton{border:1px solid var(--color-accent);background:var(--color-accent-tint);
+color:var(--color-accent-deeper);border-radius:4px;padding:12px 22px;font-size:13.5px;cursor:pointer;white-space:nowrap}
+.loginButton:hover{border-color:var(--color-accent-deep)}
+
+/* ── 투표 ── */
+.voteMain{flex-direction:column;align-items:center;gap:16px;min-height:100dvh;padding:24px 16px 48px;display:flex}
+.voteHeaderRow{justify-content:space-between;align-items:center;width:100%;max-width:480px;display:flex}
+.homeLink{color:var(--color-ink-dim);font-size:.85rem;font-weight:600;cursor:pointer}
+.homeLink:hover{color:var(--color-accent-deep)}
+.headerRight{align-items:center;gap:12px;display:flex}
 .nickname{font-weight:600}
-.logoutButton{border:1px solid var(--border-color);color:var(--muted);cursor:pointer;
-background:0 0;border-radius:6px;padding:6px 12px;font-size:.85rem}
-.card{border:1px solid var(--border-color);background:var(--card-bg);border-radius:16px;
-width:100%;max-width:480px;padding:28px 24px}
+.card{border:1px solid var(--color-hairline);background:var(--card-bg);border-radius:16px;width:100%;
+max-width:480px;padding:28px 24px}
 .title{margin:0 0 8px;font-size:1.25rem}
 .dateLine{margin:0 0 4px;font-weight:600}
 .instruction{color:var(--muted);margin:0 0 20px;font-size:.875rem}
+.tabBar{background:var(--background);border:1px solid var(--color-hairline);border-radius:12px;
+grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:20px;padding:4px;display:grid}
+.tabButton{color:var(--muted);cursor:pointer;background:0 0;border:none;border-radius:9px;padding:10px 8px;
+font-size:.85rem;font-weight:600}
+.tabButtonActive{background:var(--color-accent-tint);color:var(--color-accent-deeper);
+box-shadow:0 0 0 1px var(--color-accent)}
 .buttonRow{grid-template-columns:repeat(2,1fr);gap:10px;display:grid}
-.voteButton{border:1px solid var(--border-color);color:var(--foreground);cursor:pointer;
-background:0 0;border-radius:10px;padding:14px 12px;font-size:1rem;font-weight:600}
-.voteButton:disabled{opacity:.5;cursor:not-allowed}
-.primary{border-color:var(--accent);color:var(--accent)}
-.grey{border-color:var(--muted)}
-.green{color:#2f9e44;border-color:#2f9e44}
-.danger{color:#e5484d;border-color:#e5484d}
-.selected{background:color-mix(in srgb,currentColor 15%,transparent)}
+.voteButton{color:#201f1db3;cursor:pointer;background:0 0;border:1px solid #201f1d4d;border-radius:4px;
+min-height:48px;padding:13.8px 12px;font-size:13.5px;transition:border-color .18s,background .18s,color .18s}
+.voteButton:hover:not(:disabled){border-color:var(--color-accent);color:var(--color-accent-deep)}
+.voteButton:disabled{opacity:.45;cursor:not-allowed}
+.selected{border-color:var(--color-accent);background:var(--color-accent-tint);color:var(--color-accent-deeper)}
 .notice{color:var(--muted);margin-top:16px;font-size:.9rem;line-height:1.5}
-.warning{color:#f0a000;margin-top:16px;font-size:.9rem;line-height:1.5}
-.message{margin-top:16px;font-size:.95rem;font-weight:600}
-.error{color:#e5484d;margin-top:8px;font-size:.85rem}
-.classSection{border-top:1px solid var(--border-color);margin-top:12px;padding-top:16px}
-.classStep{flex-direction:column;gap:10px;display:flex}
-.classTypeRow{grid-template-columns:repeat(3,1fr);gap:8px;display:grid}
-.classTypeButton{border:1px solid var(--border-color);color:var(--foreground);text-align:center;
-cursor:pointer;background:0 0;border-radius:10px;padding:14px 6px;font-size:.8rem;font-weight:600}
-.classTypeButton:hover{border-color:var(--accent);color:var(--accent)}
-.classBackButton{color:var(--muted);cursor:pointer;background:0 0;border:none;
-align-self:flex-start;padding:0;font-size:.8rem}
-.classGrid{grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:10px;display:grid}
-.classCard{border:2px solid var(--border-color);color:var(--foreground);cursor:pointer;
-background:0 0;border-radius:10px;flex-direction:column;align-items:center;gap:6px;
-padding:8px 4px;display:flex}
-.classCardSelected{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 15%,transparent)}
-.classCardLabel{text-align:center;font-size:.75rem;line-height:1.2}
-.classIconPlaceholder{background:var(--border-color);border-radius:8px;width:48px;height:48px;
-display:flex;align-items:center;justify-content:center;font-size:.7rem;color:var(--color-text-faint)}
-.tabBar{background:var(--background);border:1px solid var(--border-color);border-radius:12px;
-grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:20px;padding:4px;display:grid}
-.tabButton{color:var(--muted);cursor:pointer;background:0 0;border:none;border-radius:9px;
-padding:10px 8px;font-size:.85rem;font-weight:600}
-.tabButtonActive{background:var(--card-bg);color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-@media (max-width:480px){.tabBar{z-index:1;position:sticky;top:0}}
+.warning{color:var(--color-accent-deep);margin-top:16px;font-size:.9rem;line-height:1.5}
+.message{color:var(--color-accent-deeper);margin-top:16px;font-size:.95rem;font-weight:600}
+.errorTxt{color:#b3261e;margin-top:8px;font-size:.85rem}
+.classSection{border-top:1px solid var(--color-hairline);margin-top:12px;padding-top:16px}
+.classLink{color:var(--color-accent-deep);border-bottom:1px solid #b6823573;margin-top:9.2px;
+font-size:12.5px;display:inline-block;cursor:pointer}
+.classLink:hover{color:var(--color-accent-deeper);border-bottom-color:var(--color-accent)}
 .countdown{font-variant-numeric:tabular-nums;align-items:baseline;gap:8px;margin-top:16px;display:flex}
-.countdownSegment{font-size:1.75rem;font-weight:700}
+.countdownSegment{font-size:1.75rem;font-weight:700;font-family:var(--font-mono)}
 .countdownSoon{color:var(--accent);margin-top:16px;font-size:1.1rem;font-weight:700}
 .summaryList{flex-direction:column;gap:8px;margin:16px 0 0;padding:0;list-style:none;display:flex}
-.summaryItem{border:1px solid var(--border-color);border-radius:8px;justify-content:space-between;
+.summaryItem{border:1px solid var(--color-hairline);border-radius:8px;justify-content:space-between;
 padding:10px 12px;font-size:.9rem;display:flex}
-.rankItem{border:1px solid var(--border-color);border-radius:8px;align-items:center;gap:10px;
+@media (min-width:1024px){.voteHeaderRow,.card{max-width:880px}}
+
+/* ── 순위 (연습 전용) ── */
+.rankItem{border:1px solid var(--color-hairline);border-radius:4px;align-items:center;gap:10px;
 padding:9px 12px;font-size:.9rem;display:flex}
-.rankItem.first{border-color:var(--accent)}
-.rankItem.me{background:var(--color-accent-soft)}
-.rankNo{font-variant-numeric:tabular-nums;width:26px;color:var(--muted);font-weight:700}
+.rankItem.first{border-color:var(--color-accent);background:var(--color-accent-tint)}
+.rankItem.me{box-shadow:inset 2px 0 0 var(--color-accent)}
+.rankNo{font-family:var(--font-mono);font-variant-numeric:tabular-nums;width:26px;
+color:var(--color-ink-dim);font-weight:700}
+.rankItem.first .rankNo,.rankItem.first .rankMs{color:var(--color-accent-deeper)}
 .rankName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rankCls{font-size:.75rem;color:var(--muted);white-space:nowrap}
-.rankMs{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.85rem}
-.rankItem.first .rankNo,.rankItem.first .rankMs{color:var(--accent)}
-.hostBar{border-top:1px dashed var(--border-color);margin-top:20px;padding-top:14px}
-.hostToggle{color:var(--muted);cursor:pointer;background:0 0;border:none;padding:0;font-size:.8rem}
+.rankCls{font-size:.75rem;color:var(--color-ink-dim);white-space:nowrap}
+.rankMs{font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--color-ink-dim);font-size:.85rem}
+
+/* ── 직업 등록 페이지 ── */
+.classesMain{background:var(--color-paper);width:100%;max-width:860px;min-height:100dvh;
+flex-direction:column;margin:0 auto;display:flex}
+.classesBody{flex:1;padding:36.8px}
+.ckicker{font-family:var(--font-mono);letter-spacing:.16em;color:var(--color-accent-deep);font-size:10.5px}
+.stepTitle{margin-top:4px;font-size:26px;font-weight:400}
+.divider{background:var(--color-hairline);height:1px;margin:27.6px 0}
+.branchRow{grid-template-columns:repeat(3,1fr);gap:13.8px;margin-top:13.8px;display:grid}
+.branchCard{border:1px solid var(--color-hairline);text-align:left;cursor:pointer;background:0 0;
+border-radius:4px;padding:13.8px 18.4px;transition:border-color .18s,background .18s}
+.branchCard:hover{border-color:var(--color-accent)}
+.branchCardSelected{border-color:var(--color-accent);background:var(--color-accent-tint)}
+.branchNum{font-family:var(--font-mono);letter-spacing:.14em;color:var(--color-accent-deep);font-size:10px;display:block}
+.branchLabel{font-family:var(--font-body);color:var(--color-ink);font-size:17px;display:block}
+.branchCardSelected .branchLabel{color:var(--color-accent-deeper)}
+.branchSub{color:var(--color-ink-dim);margin-top:4px;font-size:11.5px;line-height:1.5;display:block}
+.stepTwo{opacity:.38;transition:opacity .22s}
+.stepTwoActive{opacity:1}
+.stepTwoHeader{justify-content:space-between;align-items:baseline;gap:13.8px;display:flex}
+.stepTwoHint{font-family:var(--font-mono);color:var(--color-ink-dim);font-size:11px}
+.classGrid{grid-template-columns:repeat(8,1fr);gap:9.2px;margin-top:18.4px;display:grid}
+.classTile{border:1px solid var(--color-hairline);min-height:76px;color:var(--color-ink);cursor:pointer;
+background:0 0;border-radius:4px;flex-direction:column;align-items:center;gap:6px;padding:9.2px 4.6px;
+transition:border-color .18s,background .18s,transform .18s;display:flex}
+.classTile:hover:not(:disabled){border-color:var(--color-accent);transform:translateY(-2px)}
+.classTileSelected{border-color:var(--color-accent);background:var(--color-accent-tint)}
+.classTileName{font-family:var(--font-body);text-align:center;font-size:11.5px;line-height:1.2}
+.classTileSelected .classTileName{color:var(--color-accent-deeper)}
+.classesFooter{border-top:1px solid var(--color-hairline);background:var(--color-surface);
+justify-content:space-between;align-items:center;gap:13.8px;padding:18.4px 36.8px;display:flex;
+position:sticky;bottom:0}
+.summaryKicker{font-family:var(--font-mono);letter-spacing:.04em;color:var(--color-ink-dim);font-size:10px;display:block}
+.summaryTxt{margin-top:2px;font-size:13.5px}
+.summaryStrong{color:var(--color-accent-deeper)}
+.summaryDim{color:var(--color-ink-dim)}
+.footerActions{flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:9.2px;display:flex}
+.doneTxt{color:var(--color-accent-deep);font-size:11.5px}
+.resetButton{border:1px solid var(--color-hairline);min-height:44px;color:var(--color-ink-dim);
+cursor:pointer;background:0 0;border-radius:4px;padding:6px 13.8px;font-size:11.5px}
+.resetButton:hover{border-color:var(--color-accent);color:var(--color-accent-deep)}
+.submitButton{border:1px solid var(--color-accent);background:var(--color-accent-tint);min-height:44px;
+color:var(--color-accent-deeper);cursor:pointer;border-radius:4px;padding:9.2px 22px;font-size:13.5px}
+.submitButton:disabled{border-color:var(--color-hairline);color:var(--color-ink-faint);
+cursor:not-allowed;opacity:.45;background:0 0}
+@media (max-width:768px){.classesBody{padding:22px}.stepTitle{font-size:19px}
+.branchRow{grid-template-columns:1fr;gap:9.2px}.branchNum{display:none}.divider{margin:22px 0}
+.classGrid{grid-template-columns:repeat(4,1fr)}
+.classesFooter{flex-direction:column;align-items:stretch;gap:9.2px;padding:13.8px 22px}
+.summaryTxt{margin-top:0}.footerActions{justify-content:stretch}.submitButton{flex:1}}
+
+/* ── 직업 아이콘(마크) ── */
+.tile{width:34px;height:34px;flex:none;display:inline-flex;position:relative}
+.tilePlaceholder{background:var(--color-hairline);border-radius:4px;width:100%;height:100%;
+display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--color-ink-dim);
+font-family:var(--font-body)}
+.classTileSelected .tilePlaceholder{background:#b6823540;color:var(--color-accent-deeper)}
+.mark{width:15px;height:15px;background:var(--color-paper);border:1px solid var(--mark-border);
+border-radius:50%;position:absolute;bottom:-4px;right:-5px}
+.classTileSelected .mark{background:var(--color-accent-tint)}
+
+/* ── 관리자(연습 진행) ── */
+.hostBar{border-top:1px dashed var(--color-hairline);margin-top:20px;padding-top:14px}
+.hostToggle{color:var(--color-ink-dim);cursor:pointer;background:0 0;border:none;padding:0;
+font-family:var(--font-mono);font-size:11px;letter-spacing:.04em}
 .hostRow{gap:8px;margin-top:12px;display:flex;flex-wrap:wrap}
-.hostBtn{border:1px solid var(--border-color);color:var(--foreground);cursor:pointer;background:0 0;
-border-radius:8px;padding:9px 12px;font-size:.8rem;font-weight:600}
-.hostBtn:hover{border-color:var(--accent);color:var(--accent)}
-.loginRow{gap:8px;margin-top:16px;display:flex}
-.loginInput{flex:1;min-width:0;border:1px solid var(--border-color);background:var(--background);
-color:var(--foreground);border-radius:8px;padding:11px 12px;font-size:1rem;outline:none}
-.loginInput:focus{border-color:var(--accent)}
-.ok{color:#2f9e44;margin-top:16px;font-size:.9rem;font-weight:600}
+.hostBtn{border:1px solid var(--color-hairline);color:var(--color-ink-dim);cursor:pointer;background:0 0;
+border-radius:4px;padding:9px 12px;font-size:11.5px;min-height:40px}
+.hostBtn:hover{border-color:var(--color-accent);color:var(--color-accent-deep)}
 </style></head><body>
-<div class="main">
-  <div class="header">
-    <span class="nickname" id="hdrNick"></span>
-    <button class="logoutButton" id="hdrOut" style="display:none">가문명 변경</button>
-  </div>
-  <div class="card" id="card">불러오는 중…</div>
-</div>
+<div id="app">불러오는 중…</div>
 <script>
-const TL={Succession:"전승",Awaken:"각성",Else:"기타(아처, 샤이, 스칼라)"};
-const TS={Succession:"전승",Awaken:"각성",Else:"기타"};
-// 순위표에 "매구 (전승)" 형태로 표시
-const clsLabel=e=>e.className?`${e.className} (${TS[e.classType]||'?'})`:'직업 미등록';
-const ELSE_C=["아처","샤이","스칼라"];
+// ── 직업 데이터 (신규 사이트 번들 기준: 32종) ──
+const CLASS_TYPE_LABEL={Succession:"전승",Awaken:"각성",Else:"기타"};
+const CLASS_TYPE_SUBLABEL={Succession:"주 무기 계열",Awaken:"각성 무기 계열",Else:"개방 · 재능 계열"};
+const ELSE_C=["아처","샤이","스칼라","데드아이","오공","세라핌"];
 const DUAL_C=["워리어","소서러","레인저","자이언트","금수랑","무사","발키리","매화","위자드","위치",
 "쿠노이치","닌자","다크나이트","격투가","미스틱","란","가디언","하사신","노바","세이지","커세어",
-"드라카니아","우사","매구","도사","데드아이","에이전트"];
-const VOTES=[{t:"attend",c:"primary"},{t:"non_attend",c:"grey"},
-{t:"boarding",c:"green"},{t:"late_attend",c:"danger"}];
-const VL={attend:"참여",non_attend:"미참",boarding:"부속",late_attend:"늦참"};
-const CLASS_SHOW=["attend","boarding"];
+"드라카니아","우사","매구","도사","에이전트"];
 const clsFor=t=>t==="Else"?ELSE_C:DUAL_C;
+const markColor=t=>t==="Succession"?"var(--color-mark-succession)"
+  :t==="Awaken"?"var(--color-mark-awakening)":"var(--color-mark-neutral)";
+
+const VOTE_ORDER=["attend","boarding","late_attend","non_attend"];
+const VOTING_TYPE_LABEL={attend:"참여",boarding:"부속",late_attend:"늦참",non_attend:"미참"};
+const ATTEND_TYPES=["attend","boarding"];
+
 const $=id=>document.getElementById(id);
+const app=$('app');
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pad=n=>String(n).padStart(2,"0");
+const clsLabel=e=>e.className?`${e.className} (${CLASS_TYPE_LABEL[e.classType]||'?'})`:'직업 미등록';
 
-// ── 직업/가문명은 브라우저에 저장하고, 접속할 때마다 서버에 자동 재등록 ──
-// 서버가 재시작(Render 슬립/재배포)돼도 다시 고를 필요가 없게 하는 핵심 부분
-const LS_NICK='ps_nick', LS_PROF='ps_prof';
-function loadProf(){
-  try{const r=localStorage.getItem(LS_PROF);return r?JSON.parse(r):null;}catch(e){return null;}
-}
-function saveProf(p){
-  try{p?localStorage.setItem(LS_PROF,JSON.stringify(p)):localStorage.removeItem(LS_PROF);}catch(e){}
+// ── 상태 ──
+const LS_NICK='ps_nick',LS_PROF='ps_prof';
+let nick=null,prof=null;
+try{nick=localStorage.getItem(LS_NICK);}catch(e){}
+try{const r=localStorage.getItem(LS_PROF);prof=r?JSON.parse(r):null;}catch(e){}
+let route=location.pathname,st=null,board=[],last=null,history=[],offset=0;
+let tab='current',myVote=null,myRank=null,myMs=null,msg=null,err=null,busy=false;
+let pickType=null,pickName=null,saving=false,savedMsg=null;
+let hostOpen=false,autoSwitched=false,lastSync=0,tickTimer=null;
+
+function saveProf(p){try{p?localStorage.setItem(LS_PROF,JSON.stringify(p)):localStorage.removeItem(LS_PROF);}catch(e){}}
+async function api(p,b){
+  const o=b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{};
+  return (await fetch(p,o)).json();
 }
 async function syncProfToServer(){
   if(!nick||!prof)return;
   try{await api('/api/profile',{nickname:nick,name:prof.name,type:prof.type});}catch(e){}
-}
-
-let nick=null,prof=null;
-try{nick=localStorage.getItem(LS_NICK);}catch(e){}
-prof=loadProf();
-let st=null,board=[],last=null,offset=0;
-let screen='race',tab='process',pickType=null,hostOpen=false;
-let myVote=null,myRank=null,myMs=null,msg=null,err=null,busy=false;
-let autoSwitched=false,lastSync=0;
-
-async function api(p,b){
-  const o=b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{};
-  return (await fetch(p,o)).json();
 }
 async function syncClock(){
   let best=1e9;
@@ -252,19 +402,21 @@ async function syncClock(){
 const srvNow=()=>Date.now()+offset;
 const isLive=()=>st&&st.status==='armed'&&srvNow()>=st.openAt;
 
+function go(path){
+  if(location.pathname!==path)history.pushState?history.pushState({},'',path):null;
+  route=path;pickType=null;pickName=null;savedMsg=null;render();
+}
+function navigate(path){window.history.pushState({},'',path);route=path;
+  pickType=null;pickName=null;savedMsg=null;render();}
+
 async function pull(){
   let j;
-  try{ j=await api('/api/state'); }catch(e){ return; }
-  const prevId=st&&st.id;
-  st=j.state;board=j.board;last=j.last;
-  if(st.id!==prevId){
-    myVote=null;myRank=null;myMs=null;msg=null;err=null;autoSwitched=false;
-    // 새 라운드가 열리면 내 직업이 서버에 남아있는지 다시 밀어넣는다
-    syncProfToServer();
-  }
-  // 서버가 재시작됐을 수 있으니 30초마다 직업을 다시 등록해둔다
-  if(Date.now()-lastSync>30000){ lastSync=Date.now(); syncProfToServer(); }
-  if(isLive()&&!autoSwitched){autoSwitched=true;tab='process';}
+  try{j=await api('/api/state');}catch(e){return;}
+  const prev=st&&st.id;
+  st=j.state;board=j.board;last=j.last;history=j.history||[];
+  if(st.id!==prev){myVote=null;myRank=null;myMs=null;msg=null;err=null;autoSwitched=false;syncProfToServer();}
+  if(Date.now()-lastSync>30000){lastSync=Date.now();syncProfToServer();}
+  if(isLive()&&!autoSwitched){autoSwitched=true;tab='current';}
   render();
 }
 async function castVote(type){
@@ -274,147 +426,251 @@ async function castVote(type){
     const j=await api('/api/vote',{nickname:nick,roundId:st.id,type});
     if(j.ok){
       myVote=j.votingType;myRank=j.rank;myMs=j.deltaMs;board=j.board;
-      msg=j.duplicated?`이미 ${VL[j.votingType]}를 선택한 상태입니다.`:`${VL[j.votingType]} 선택.`;
-      // 본사이트와 동일하게: 직업이 이미 있으면 종류 선택을 건너뛰고 직업 목록부터 표시
-      if(CLASS_SHOW.includes(j.votingType)&&pickType===null&&prof)pickType=prof.type;
+      msg=j.duplicated?`이미 ${VOTING_TYPE_LABEL[j.votingType]}를 선택한 상태입니다.`
+                      :`${VOTING_TYPE_LABEL[j.votingType]} 선택.`;
     }else{err=j.error;}
-  }catch(e){err='통신 오류가 발생했습니다. 다시 시도하세요.';}
+  }catch(e){err='투표 처리 중 오류가 발생했습니다.';}
   busy=false;render();
 }
-async function pickClass(name){
-  prof={name,type:pickType};
-  saveProf(prof);                 // 먼저 브라우저에 저장 (서버가 재시작돼도 유지됨)
+async function submitClass(){
+  if(!pickName||!pickType||saving)return;
+  saving=true;render();
+  prof={name:pickName,type:pickType};
+  saveProf(prof);
   await syncProfToServer();
-  await pull();                   // 순위표의 내 직업 표시를 즉시 갱신
-  render();
+  await pull();
+  saving=false;savedMsg='등록 완료';render();
 }
 
-function classPickerHTML(){
-  if(pickType===null){
-    return `<div class="classStep"><div class="classTypeRow">
-      ${Object.keys(TL).map(t=>`<button class="classTypeButton" data-t="${t}">${TL[t]}</button>`).join('')}
-    </div></div>`;
-  }
-  return `<div class="classStep">
-    <button class="classBackButton" id="clsBack">‹ 직업 종류 다시 선택</button>
-    <div class="classGrid">${clsFor(pickType).map(n=>`
-      <button class="classCard ${prof&&prof.name===n&&prof.type===pickType?'classCardSelected':''}" data-n="${esc(n)}">
-        <span class="classIconPlaceholder">${esc(n.slice(0,2))}</span>
-        <span class="classCardLabel">${esc(n)}</span></button>`).join('')}</div></div>`;
+// ── 공통 헤더 ──
+function siteHeaderHTML(active){
+  const link=(p,l)=>`<span class="navLink ${route===p?'navLinkActive':''}" data-go="${p}">${l}</span>`;
+  return `<header class="siteHeader">
+    <div class="brandBlock"><span class="brand">아시바당</span>
+    <span class="kicker">연습 · PRACTICE</span></div>
+    <nav class="nav">
+      ${link('/','홈')}${link('/vote','투표')}${link('/classes','직업')}
+      <span class="navLinkSoon">기록 (준비중)</span>
+      <button class="logoutButton" id="btnLogout">가문명 변경</button>
+    </nav></header>`;
 }
 
-function processHTML(){
+// ── 로그인 ──
+function renderLogin(){
+  app.innerHTML=`<main class="loginMain"><div class="loginHero">
+    <h1 class="loginBrand">아시바당</h1>
+    <p class="loginTagline">거점전 선착순 신청 연습장</p>
+    <p class="kicker">동일한 주소로 접속한 길드원 전원이 함께 참여합니다</p>
+    <div class="loginRow"><input class="loginInput" id="ni" placeholder="가문명 입력" maxlength="16">
+    <button class="loginButton" id="jb">입장</button></div>
+  </div></main>`;
+  const i=$('ni');
+  const enter=async()=>{const v=i.value.trim();if(!v)return;
+    nick=v;try{localStorage.setItem(LS_NICK,v);}catch(e){}
+    await syncProfToServer();render();};
+  $('jb').onclick=enter;
+  i.addEventListener('keydown',e=>{if(e.key==='Enter')enter()});
+  i.focus();
+}
+
+// ── 홈 ──
+function homeHTML(){
   const live=isLive();
-  return `<h1 class="title">거점전 설문조사${live?'':' (대기중)'}</h1>
-  <p class="dateLine">선착순 신청 연습</p>
+  const armed=st&&st.status==='armed'&&!live;
+  let heroKicker,heroTitle;
+  if(live){heroKicker='설문 진행중';heroTitle='지금 신청 가능';}
+  else if(armed){
+    const s=Math.max(0,Math.floor((st.openAt-srvNow())/1000));
+    heroKicker='다음 설문까지';
+    heroTitle=`${pad(Math.floor(s/3600))}:${pad(Math.floor(s%3600/60))}:${pad(s%60)}`;
+  }else{heroKicker='대기';heroTitle=st&&st.status==='closed'?'설문 마감':'예정된 설문 없음';}
+
+  const cards=(history.length?history:[]).slice(0,6).map(h=>`
+    <div class="dayCard"><div class="dayCardTop">
+      <span class="dayLabel">${h.round}회</span>
+      <span class="dayDate">${new Date(h.openAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}</span>
+    </div><span class="dayState">종료</span>
+    <span class="dayVote">${h.count}명 참여</span></div>`).join('');
+
+  return `${siteHeaderHTML()}<main class="homeMain">
+    <section class="hero"><div class="heroPattern"></div><div class="heroScrim"></div>
+      <div class="heroContent"><div>
+        <p class="heroKicker">${heroKicker}</p>
+        <h1 class="heroTitle">${heroTitle}</h1>
+        <div class="heroActions">
+          <button class="heroButton" data-go="/vote">투표하러 가기</button>
+          <button class="heroButtonGhost" data-go="/classes">직업 등록</button>
+        </div></div>
+        <p class="heroMyVote">${myVote?`내 선택 · ${VOTING_TYPE_LABEL[myVote]}`:'미신청'}</p>
+      </div></section>
+    <div class="homeBody"><div class="columns">
+      <div>
+        <div class="sectionHeader"><h2 class="sectionTitle">지난 연습</h2>
+          <span class="sectionMeta">최근 ${Math.min(history.length,6)}회</span></div>
+        <div class="dayGrid">${cards||'<div class="dayCard"><span class="dayState">기록 없음</span></div>'}</div>
+      </div>
+      <aside>
+        <div class="sectionHeader"><h2 class="sectionTitle">내 직업</h2>
+          <span class="sectionLink" data-go="/classes">변경 →</span></div>
+        ${prof?`<div class="classCardHome">
+            <span class="tile"><span class="tilePlaceholder">${esc(prof.name.slice(0,2))}</span>
+            <span class="mark" style="--mark-border:${markColor(prof.type)}"></span></span>
+            <span><span class="classNameTxt">${esc(prof.name)}</span><br>
+            <span class="classSub">${CLASS_TYPE_LABEL[prof.type]}</span></span></div>`
+          :`<div class="classCardEmpty"><span class="classNameTxt">직업 미등록</span>
+            <span class="classSub">등록해두면 실전에서 신청 버튼만 누르면 됩니다.</span></div>`}
+        <p class="classNote">등수는 요청이 서버에 도착한 순서로 정해집니다. 실전과 동일한 기준입니다.</p>
+      </aside>
+    </div></div></main>`;
+}
+
+// ── 투표 ──
+function currentTabHTML(){
+  const live=isLive();
+  const closed=st&&st.status==='closed';
+  if(!live&&!closed&&st&&st.status==='armed'){
+    const s=Math.max(0,Math.floor((st.openAt-srvNow())/1000));
+    return `<h1 class="title">거점전 설문조사</h1>
+      <p class="dateLine">연습 ${st.round}회차</p>
+      <p class="instruction">설문이 열리면 이 화면이 투표 화면으로 바뀝니다.</p>
+      ${s<=0?'<p class="countdownSoon">곧 설문이 열립니다...</p>'
+      :`<div class="countdown"><span class="countdownSegment">${pad(Math.floor(s/3600))}:${pad(Math.floor(s%3600/60))}:${pad(s%60)}</span></div>`}`;
+  }
+  return `<h1 class="title">거점전 설문조사</h1>
+  <p class="dateLine">연습 ${st&&st.round?st.round+'회차':'-'}</p>
   <p class="instruction">선택지는 하나만 선택해주세요. (부속인 경우 부속만 선택)</p>
-  <div class="buttonRow">${VOTES.map(v=>`
-    <button class="voteButton ${v.c} ${myVote===v.t?'selected':''}" data-v="${v.t}"
-      ${(!live||busy)?'disabled':''}>${VL[v.t]}</button>`).join('')}</div>
-  ${myRank?`<p class="message">서버 도착 ${myMs}ms · <strong>${myRank}등</strong></p>`:''}
+  <div class="buttonRow">${VOTE_ORDER.map(t=>`
+    <button class="voteButton ${myVote===t?'selected':''}" data-v="${t}"
+      ${(!live||busy)?'disabled':''}>${VOTING_TYPE_LABEL[t]}</button>`).join('')}</div>
+  ${myRank?`<p class="message">서버 도착 ${myMs}ms · ${myRank}등</p>`:''}
+  ${closed?'<p class="notice">투표가 마감되었습니다.</p>':''}
+  ${!live&&!closed?'<p class="notice">아직 설문이 열리지 않았습니다.</p>':''}
   ${msg?`<p class="notice">${esc(msg)}</p>`:''}
-  ${err?`<p class="error">${esc(err)}</p>`:''}
-  ${!live?(st&&st.status==='closed'
-      ?'<p class="notice">투표가 마감되었습니다.</p>'
-      :'<p class="notice">아직 열리지 않았습니다. 대기중 탭에서 카운트다운을 확인하세요.</p>'):''}
-  ${myVote&&CLASS_SHOW.includes(myVote)?`<div class="classSection">
-    ${prof?`<p class="notice">현재 직업: ${esc(prof.name)} (${TS[prof.type]})<br>직업을 변경하시려면 아래에서 다시 선택해주세요.</p>`
-          :`<p class="warning">⚠️ 직업 미등록! 아래에서 직업을 등록해야 인원제한결과에 포함됩니다.</p>`}
-    ${classPickerHTML()}</div>`:''}
+  ${err?`<p class="errorTxt">${esc(err)}</p>`:''}
+  ${!closed&&myVote&&ATTEND_TYPES.includes(myVote)?`<div class="classSection">
+    ${prof?`<p class="notice">현재 직업: ${esc(prof.name)} (${CLASS_TYPE_LABEL[prof.type]})</p>`
+          :`<p class="warning">⚠️ 직업 미등록! 직업을 등록해야 인원제한결과에 포함됩니다.</p>`}
+    <span class="classLink" data-go="/classes">직업 등록 화면 →</span></div>`:''}
   <div class="classSection"><p class="dateLine">순위 (서버 도착 순)</p>
   <ul class="summaryList">${board.length===0?'<li class="summaryItem"><span>아직 신청자가 없습니다.</span></li>'
     :board.map((e,i)=>`<li class="rankItem ${i===0?'first':''} ${e.nickname===nick?'me':''}">
       <span class="rankNo">${i+1}</span><span class="rankName">${esc(e.nickname)}</span>
-      <span class="rankCls">${esc(VL[e.votingType])} · ${esc(clsLabel(e))}</span>
+      <span class="rankCls">${esc(VOTING_TYPE_LABEL[e.votingType])} · ${esc(clsLabel(e))}</span>
       <span class="rankMs">${e.deltaMs}ms</span></li>`).join('')}</ul></div>`;
 }
-
-function waitHTML(){
-  if(!st||st.status!=='armed')
-    return `<h1 class="title">거점전 설문조사 (대기중)</h1>
-    <p class="instruction">예약된 테스트가 없습니다. 아래 관리자 모드에서 시작하세요.</p>`;
-  const left=Math.max(0,st.openAt-srvNow());
-  const s=Math.floor(left/1000);
-  return `<h1 class="title">거점전 설문조사 (대기중)</h1>
-  <p class="dateLine">선착순 신청 연습</p>
-  <p class="instruction">열리면 자동으로 진행중 탭으로 전환됩니다.</p>
-  ${left<=0?'<p class="countdownSoon">곧 열립니다...</p>'
-    :`<div class="countdown"><span class="countdownSegment">${pad(Math.floor(s/3600))}:${pad(Math.floor(s%3600/60))}:${pad(s%60)}</span></div>`}`;
-}
-
-function completeHTML(){
-  if(!last)return `<h1 class="title">이전 테스트</h1><p class="instruction">아직 완료된 테스트가 없습니다.</p>`;
+function pastTabHTML(){
+  if(!last)return `<h1 class="title">지난 설문</h1><p class="instruction">아직 완료된 연습이 없습니다.</p>`;
   const c=last.counts;
-  return `<h1 class="title">이전 테스트 (${last.round}회차)</h1>
-  <ul class="summaryList">${Object.keys(VL).map(k=>`
-    <li class="summaryItem"><span>${VL[k]}</span><span>${c[k]||0}명</span></li>`).join('')}</ul>
+  return `<h1 class="title">지난 설문 (${last.round}회차)</h1>
+  <ul class="summaryList">${VOTE_ORDER.map(k=>`
+    <li class="summaryItem"><span>${VOTING_TYPE_LABEL[k]}</span><span>${c[k]||0}명</span></li>`).join('')}</ul>
   <p class="notice">총 ${last.board.length}명 참여</p>
   <ul class="summaryList">${last.board.map((e,i)=>`
     <li class="rankItem ${i===0?'first':''} ${e.nickname===nick?'me':''}">
     <span class="rankNo">${i+1}</span><span class="rankName">${esc(e.nickname)}</span>
-    <span class="rankCls">${esc(VL[e.votingType])} · ${esc(clsLabel(e))}</span>
+    <span class="rankCls">${esc(VOTING_TYPE_LABEL[e.votingType])} · ${esc(clsLabel(e))}</span>
     <span class="rankMs">${e.deltaMs}ms</span></li>`).join('')}</ul>`;
 }
+function voteHTML(){
+  const tabs={current:'현재 설문',past:'지난 설문'};
+  return `${siteHeaderHTML()}<main class="voteMain">
+    <div class="voteHeaderRow">
+      <span class="homeLink" data-go="/">← 홈</span>
+      <div class="headerRight"><span class="nickname">${esc(nick)}</span></div>
+    </div>
+    <div class="card">
+      <div class="tabBar" role="tablist">${Object.keys(tabs).map(k=>
+        `<button class="tabButton ${tab===k?'tabButtonActive':''}" data-tab="${k}">${tabs[k]}</button>`).join('')}</div>
+      <div>${tab==='current'?currentTabHTML():pastTabHTML()}</div>
+      <div class="hostBar"><button class="hostToggle" id="ht">${hostOpen?'▲ 연습 진행 닫기':'▼ 연습 진행 (관리자)'}</button>
+      ${hostOpen?`<div class="hostRow">
+        <button class="hostBtn" data-d="5">5초 후 오픈</button>
+        <button class="hostBtn" data-d="10">10초 후 오픈</button>
+        <button class="hostBtn" data-d="30">30초 후 오픈</button>
+        <button class="hostBtn" data-d="-1">마감</button></div>
+        <p class="notice" style="font-size:11.5px">설문을 열면 접속 중인 모두의 화면이 동시에 카운트다운으로 바뀝니다.</p>`:''}</div>
+    </div></main>`;
+}
 
+// ── 직업 등록 ──
+function classesHTML(){
+  const activeType=pickType||(prof&&prof.type)||null;
+  const selName=pickName||(prof&&prof.name)||null;
+  const list=activeType?clsFor(activeType):[];
+  return `${siteHeaderHTML()}<main class="classesMain">
+    <div class="classesBody">
+      <p class="ckicker">STEP 01</p>
+      <h1 class="stepTitle">직업 계열을 선택하세요</h1>
+      <div class="branchRow">${Object.keys(CLASS_TYPE_LABEL).map((t,i)=>`
+        <button class="branchCard ${activeType===t?'branchCardSelected':''}" data-t="${t}">
+          <span class="branchNum">0${i+1}</span>
+          <span class="branchLabel">${CLASS_TYPE_LABEL[t]}</span>
+          <span class="branchSub">${CLASS_TYPE_SUBLABEL[t]}</span></button>`).join('')}</div>
+      <div class="divider"></div>
+      <div class="stepTwo ${activeType?'stepTwoActive':''}">
+        <div class="stepTwoHeader"><div>
+          <p class="ckicker">STEP 02</p>
+          <h2 class="stepTitle">직업을 선택하세요</h2></div>
+          <span class="stepTwoHint">${activeType?`${list.length}개`:'계열 먼저 선택'}</span></div>
+        <div class="classGrid">${list.map(n=>`
+          <button class="classTile ${selName===n&&activeType===(pickType||(prof&&prof.type))?'classTileSelected':''}" data-n="${esc(n)}">
+            <span class="tile"><span class="tilePlaceholder">${esc(n.slice(0,2))}</span>
+            <span class="mark" style="--mark-border:${markColor(activeType)}"></span></span>
+            <span class="classTileName">${esc(n)}</span></button>`).join('')}</div>
+      </div>
+    </div>
+    <footer class="classesFooter">
+      <div class="summaryBlock"><span class="summaryKicker">현재 선택</span>
+        <p class="summaryTxt">${selName&&activeType
+          ?`<span class="summaryStrong">${esc(selName)}</span> <span class="summaryDim">(${CLASS_TYPE_LABEL[activeType]})</span>`
+          :'<span class="summaryDim">선택 없음</span>'}</p></div>
+      <div class="footerActions">
+        ${savedMsg?`<span class="doneTxt">${savedMsg}</span>`:''}
+        <button class="resetButton" id="btnBackVote">투표로 돌아가기</button>
+        <button class="submitButton" id="btnSave" ${(!pickName||!pickType||saving)?'disabled':''}>
+          ${saving?'저장 중…':'이 직업으로 등록'}</button>
+      </div></footer></main>`;
+}
+
+// ── 렌더 ──
 function render(){
-  if(!nick){
-    if($('ni'))return;
-    $('hdrNick').textContent='';$('hdrOut').style.display='none';
-    $('card').innerHTML=`<h1 class="title">거점전 선착순 연습</h1>
-      <p class="instruction">가문명을 입력하고 입장하세요. 같은 주소로 접속한 길드원 전원이 동일한 테스트에 함께 참여합니다.</p>
-      <div class="loginRow"><input class="loginInput" id="ni" placeholder="가문명 입력" maxlength="16">
-      <button class="voteButton primary" id="jb" style="padding:11px 18px;font-size:.9rem">입장</button></div>`;
-    const i=$('ni');
-    const go=async()=>{const v=i.value.trim();if(!v)return;
-      nick=v;try{localStorage.setItem(LS_NICK,v);}catch(e){}
-      await syncProfToServer();
-      tab='process';
-      render();};
-    $('jb').onclick=go;i.addEventListener('keydown',e=>{if(e.key==='Enter')go()});i.focus();
-    return;
-  }
-  $('hdrNick').textContent=nick;
-  $('hdrOut').style.display='';
-  $('hdrOut').onclick=()=>{
-    try{localStorage.removeItem(LS_NICK);}catch(e){}
-    nick=null;render();
-  };
+  if(!nick)return renderLogin();
+  if(route==='/vote')app.innerHTML=voteHTML();
+  else if(route==='/classes')app.innerHTML=classesHTML();
+  else app.innerHTML=homeHTML();
 
-  const tabs={process:'진행중',wait:'대기중',complete:'이전 테스트'};
-  $('card').innerHTML=`<div class="tabBar" role="tablist">
-    ${Object.keys(tabs).map(k=>`<button class="tabButton ${tab===k?'tabButtonActive':''}" data-tab="${k}">${tabs[k]}</button>`).join('')}
-    </div><div class="tabContent">
-    ${tab==='process'?processHTML():tab==='wait'?waitHTML():completeHTML()}</div>
-    <div class="hostBar"><button class="hostToggle" id="ht">${hostOpen?'▲ 관리자 모드 닫기':'▼ 관리자 모드 (테스트 진행)'}</button>
-    ${hostOpen?`<div class="hostRow">
-      <button class="hostBtn" data-d="5">5초 후</button>
-      <button class="hostBtn" data-d="10">10초 후</button>
-      <button class="hostBtn" data-d="30">30초 후</button>
-      <button class="hostBtn" data-d="-1">초기화</button></div>
-      <p class="notice" style="font-size:.8rem">테스트를 열면 접속 중인 모두의 화면이 동시에 카운트다운으로 바뀝니다.</p>`:''}</div>`;
-
-  document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;pickType=null;render()});
+  document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>navigate(b.dataset.go));
+  const lo=$('btnLogout');
+  if(lo)lo.onclick=()=>{try{localStorage.removeItem(LS_NICK);}catch(e){}nick=null;render();};
+  document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render()});
   document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>castVote(b.dataset.v));
-  document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{pickType=b.dataset.t;render()});
-  document.querySelectorAll('[data-n]').forEach(b=>b.onclick=()=>pickClass(b.dataset.n));
-  const cb=$('clsBack');if(cb)cb.onclick=()=>{pickType=null;render()};
-  $('ht').onclick=()=>{hostOpen=!hostOpen;render()};
+  document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{
+    pickType=b.dataset.t;pickName=null;savedMsg=null;render()});
+  document.querySelectorAll('[data-n]').forEach(b=>b.onclick=()=>{
+    pickName=b.dataset.n;savedMsg=null;render()});
+  const sv=$('btnSave');if(sv)sv.onclick=submitClass;
+  const bv=$('btnBackVote');if(bv)bv.onclick=()=>navigate('/vote');
+  const ht=$('ht');if(ht)ht.onclick=()=>{hostOpen=!hostOpen;render()};
   document.querySelectorAll('[data-d]').forEach(b=>b.onclick=async()=>{
     const d=Number(b.dataset.d);
     await api(d<0?'/api/reset':'/api/arm',d<0?{}:{delay:d});
-    if(d>=0)tab='wait';
     pull();});
 }
+
+window.addEventListener('popstate',()=>{route=location.pathname;render();});
+
 (async function(){
   await syncClock();
   await syncProfToServer();
   await pull();
   render();
   setInterval(pull,1000);
-  setInterval(()=>{if(tab==='wait'&&st&&st.status==='armed')render();},200);
+  setInterval(()=>{if(st&&st.status==='armed'&&!isLive())render();},200);
   setInterval(syncClock,60000);
 })();
-</script></body></html>
+
+</script>
+</body></html>
 """
 
 
@@ -447,13 +703,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlparse(self.path).path
-        if path == "/":
+        # 본사이트와 동일한 경로 구조: / (홈), /vote (투표), /classes (직업 등록)
+        if path in ("/", "/vote", "/classes"):
             return self._send(HTML, "text/html; charset=utf-8")
         if path == "/api/time":
             return self._json({"now": now_ms()})
         if path == "/api/state":
             with _lock:
-                return self._json({"state": _state, "board": board_of(_state["id"]), "last": _last})
+                return self._json({"state": _state, "board": board_of(_state["id"]),
+                                   "last": _last, "history": _history})
         if path == "/api/profile":
             q = parse_qs(urlparse(self.path).query)
             with _lock:
@@ -477,7 +735,6 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/reset":
             with _lock:
                 archive_current()
-                # 아직 한 번도 안 연 상태(idle)와 구분하기 위해 closed 로 표시
                 _state["status"] = "closed"
                 _state["openAt"] = 0.0
                 return self._json({"ok": True, "state": _state})
@@ -488,8 +745,8 @@ class Handler(BaseHTTPRequestHandler):
             if nick and name and ctype:
                 with _lock:
                     _profiles[nick] = {"name": name, "type": ctype}
-                    # 이미 이번 라운드에 신청한 상태라면 순위표의 직업 표시도 즉시 갱신
-                    # (등수와 도착 시각은 최초 클릭 기준 그대로 유지)
+                    # 이미 신청한 상태면 순위표의 직업 표시도 즉시 갱신
+                    # (등수와 도착 시각은 최초 클릭 기준 유지)
                     for r in _entries.get(_state["id"], []):
                         if r["nickname"] == nick:
                             r["className"] = name
@@ -528,7 +785,8 @@ if __name__ == "__main__":
     print(f"  주소:           http://localhost:{PORT}")
     for ip in local_ips():
         print(f"  같은 와이파이:  http://{ip}:{PORT}")
-    print("\n  등수 기준: 요청이 서버에 도착한 순서")
+    print("\n  경로:  /  홈   ·   /vote  투표   ·   /classes  직업 등록")
+    print("  등수 기준: 요청이 서버에 도착한 순서")
     print("  직업은 각자 브라우저에 저장되어 서버 재시작 후에도 유지됩니다.")
     print("  종료: Ctrl+C\n")
     try:
