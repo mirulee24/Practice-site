@@ -15,11 +15,19 @@
 import os
 import json
 import time
+import mimetypes
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 
 PORT = int(os.environ.get("PORT", "8000"))
+
+# 이미지 폴더: 이 파이썬 파일과 같은 위치의 static/ 안에
+#   static/class-icons/Class_Icon_Sage.png  … (32개 직업)
+#   static/marks/succession.png, awakening.png
+#   static/img/hero.png
+# 파일이 없으면 자동으로 글자 아이콘으로 대체되므로, 일부만 넣어도 동작합니다.
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 VOTE_LABEL = {"attend": "참여", "boarding": "부속", "late_attend": "늦참", "non_attend": "미참"}
 VOTE_ORDER = ["attend", "boarding", "late_attend", "non_attend"]
@@ -113,7 +121,7 @@ HTML = r"""<!DOCTYPE html>
 <title>거점전 선착순 연습</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Lora:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Nanum+Myeongjo:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Lora:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Nanum+Myeongjo:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 :root{--color-paper:#f3f2f2;--color-surface:#eae9e9;--color-ink:#201f1d;--color-ink-dim:#605d5d;
 --color-ink-faint:#7d7979;--color-hairline:#201f1d29;--color-rule:#201f1d1f;--color-accent:#b68235;
@@ -122,10 +130,11 @@ HTML = r"""<!DOCTYPE html>
 --color-dark-accent:#e1ad66;--color-dark-accent-bright:#facb8d;--color-mark-succession:#5b7fb5;
 --color-mark-awakening:#b0555f;--color-mark-neutral:#201f1d38;--shadow-card:0 3px 10px #2d2b2b1f;
 --scrim-band:linear-gradient(180deg,transparent,#1a1918d1)}
-:root{--font-heading:"Cormorant Garamond","Nanum Myeongjo",Georgia,serif;
---font-prose:"Lora","Nanum Myeongjo",Georgia,serif;
---font-body:"Lora","Noto Sans KR",Georgia,sans-serif;
---font-mono:"JetBrains Mono",ui-monospace,monospace;
+:root{--font-korean-serif:"Nanum Myeongjo";--font-korean-sans:"Noto Sans KR";
+--font-heading:"Cormorant Garamond",var(--font-korean-serif),Georgia,serif;
+--font-prose:"Lora",var(--font-korean-serif),Georgia,serif;
+--font-body:"Lora",var(--font-korean-sans),Georgia,sans-serif;
+--font-mono:"JetBrains Mono",var(--font-korean-sans),ui-monospace,monospace;
 --background:var(--color-paper);--foreground:var(--color-ink);--card-bg:var(--color-paper);
 --border-color:var(--color-hairline);--muted:var(--color-ink-dim);--accent:var(--color-accent)}
 html{color-scheme:light;height:100%}
@@ -333,12 +342,17 @@ cursor:not-allowed;opacity:.45;background:0 0}
 
 /* ── 직업 아이콘(마크) ── */
 .tile{width:34px;height:34px;flex:none;display:inline-flex;position:relative}
+.tileImg{object-fit:contain;width:100%;height:100%;display:block;
+filter:invert()sepia(.4)brightness(.78)contrast(1.05)}
+.classTileSelected .tileImg{filter:invert()sepia(.75)saturate(1.6)brightness(.52)contrast(1.1)}
 .tilePlaceholder{background:var(--color-hairline);border-radius:4px;width:100%;height:100%;
 display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--color-ink-dim);
 font-family:var(--font-body)}
+.markImg{image-rendering:pixelated;max-width:11px;max-height:13px}
 .classTileSelected .tilePlaceholder{background:#b6823540;color:var(--color-accent-deeper)}
 .mark{width:15px;height:15px;background:var(--color-paper);border:1px solid var(--mark-border);
-border-radius:50%;position:absolute;bottom:-4px;right:-5px}
+border-radius:50%;position:absolute;bottom:-4px;right:-5px;overflow:hidden;
+display:flex;align-items:center;justify-content:center}
 .classTileSelected .mark{background:var(--color-accent-tint)}
 
 /* ── 관리자(연습 진행) ── */
@@ -354,6 +368,25 @@ border-radius:4px;padding:9px 12px;font-size:11.5px;min-height:40px}
 <script>
 // ── 직업 데이터 (신규 사이트 번들 기준: 32종) ──
 const CLASS_TYPE_LABEL={Succession:"전승",Awaken:"각성",Else:"기타"};
+// 본사이트 번들의 직업→영문 매핑 (아이콘 파일명에 사용)
+const CLASS_EN={워리어:"Warrior",소서러:"Sorceress",레인저:"Ranger",자이언트:"Berserker",
+금수랑:"Tamer",무사:"Musa",발키리:"Valkyrie",매화:"Maehwa",위자드:"Wizard",위치:"Witch",
+쿠노이치:"Kunoichi",닌자:"Ninja",다크나이트:"Dark Knight",격투가:"Striker",미스틱:"Mystic",
+란:"Lahn",아처:"Archer",샤이:"Shai",가디언:"Guardian",하사신:"Hashashin",노바:"Nova",
+세이지:"Sage",커세어:"Corsair",드라카니아:"Drakania",우사:"Woosa",매구:"Maegu",
+스칼라:"Scholar",도사:"Dosa",데드아이:"Deadeye",오공:"WuKong",세라핌:"Serapin",에이전트:"Agent"};
+const iconSrc=n=>CLASS_EN[n]?`/class-icons/Class_Icon_${CLASS_EN[n].replace(/ /g,"_")}.png`:"";
+const MARK_SRC={Succession:"/marks/succession.png",Awaken:"/marks/awakening.png"};
+// 아이콘 파일이 없으면 글자로 자동 대체
+function iconHTML(name,type,cls){
+  const src=iconSrc(name), mark=MARK_SRC[type]||"";
+  return `<span class="tile ${cls||''}">
+    ${src?`<img class="tileImg" src="${src}" alt="${esc(name)}"
+       onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:''}
+    <span class="tilePlaceholder" ${src?'style="display:none"':''}>${esc(name.slice(0,2))}</span>
+    <span class="mark" style="--mark-border:${markColor(type)}">
+      ${mark?`<img class="markImg" src="${mark}" alt="" onerror="this.remove()">`:''}</span></span>`;
+}
 const CLASS_TYPE_SUBLABEL={Succession:"주 무기 계열",Awaken:"각성 무기 계열",Else:"개방 · 재능 계열"};
 const ELSE_C=["아처","샤이","스칼라","데드아이","오공","세라핌"];
 const DUAL_C=["워리어","소서러","레인저","자이언트","금수랑","무사","발키리","매화","위자드","위치",
@@ -371,6 +404,15 @@ const $=id=>document.getElementById(id);
 const app=$('app');
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pad=n=>String(n).padStart(2,"0");
+// 본사이트 formatSurveyDate / formatSurveyTime 와 동일 (Asia/Seoul 기준)
+const DOW=["일","월","화","수","목","금","토"];
+function fmtDate(ms){
+  const p=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date(ms));
+  const g=t=>{const x=p.find(v=>v.type===t);return x?x.value:"";};
+  const d=new Date(new Date(ms).toLocaleString("en-US",{timeZone:"Asia/Seoul"})).getDay();
+  return `${g("year")}-${g("month")}-${g("day")} (${DOW[d]})`;
+}
+const fmtTime=ms=>new Intl.DateTimeFormat("ko-KR",{timeZone:"Asia/Seoul",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(ms));
 const clsLabel=e=>e.className?`${e.className} (${CLASS_TYPE_LABEL[e.classType]||'?'})`:'직업 미등록';
 
 // ── 상태 ──
@@ -379,7 +421,7 @@ let nick=null,prof=null;
 try{nick=localStorage.getItem(LS_NICK);}catch(e){}
 try{const r=localStorage.getItem(LS_PROF);prof=r?JSON.parse(r):null;}catch(e){}
 let route=location.pathname,st=null,board=[],last=null,history=[],offset=0;
-let tab='current',myVote=null,myRank=null,myMs=null,msg=null,err=null,busy=false;
+let tab='current',myVote=null,myRank=null,myMs=null,myVotedAt=null,msg=null,err=null,busy=false;
 let pickType=null,pickName=null,saving=false,savedMsg=null;
 let hostOpen=false,autoSwitched=false,lastSync=0,tickTimer=null;
 
@@ -414,7 +456,7 @@ async function pull(){
   try{j=await api('/api/state');}catch(e){return;}
   const prev=st&&st.id;
   st=j.state;board=j.board;last=j.last;history=j.history||[];
-  if(st.id!==prev){myVote=null;myRank=null;myMs=null;msg=null;err=null;autoSwitched=false;syncProfToServer();}
+  if(st.id!==prev){myVote=null;myRank=null;myMs=null;myVotedAt=null;msg=null;err=null;autoSwitched=false;syncProfToServer();}
   if(Date.now()-lastSync>30000){lastSync=Date.now();syncProfToServer();}
   if(isLive()&&!autoSwitched){autoSwitched=true;tab='current';}
   render();
@@ -425,7 +467,7 @@ async function castVote(type){
   try{
     const j=await api('/api/vote',{nickname:nick,roundId:st.id,type});
     if(j.ok){
-      myVote=j.votingType;myRank=j.rank;myMs=j.deltaMs;board=j.board;
+      myVote=j.votingType;myRank=j.rank;myMs=j.deltaMs;myVotedAt=j.votedAt;board=j.board;
       msg=j.duplicated?`이미 ${VOTING_TYPE_LABEL[j.votingType]}를 선택한 상태입니다.`
                       :`${VOTING_TYPE_LABEL[j.votingType]} 선택.`;
     }else{err=j.error;}
@@ -510,11 +552,10 @@ function homeHTML(){
         <div class="dayGrid">${cards||'<div class="dayCard"><span class="dayState">기록 없음</span></div>'}</div>
       </div>
       <aside>
-        <div class="sectionHeader"><h2 class="sectionTitle">내 직업</h2>
-          <span class="sectionLink" data-go="/classes">변경 →</span></div>
+        <div class="sectionHeader"><h2 class="sectionTitle">내 등록 직업</h2>
+          <span class="sectionLink" data-go="/classes">변경</span></div>
         ${prof?`<div class="classCardHome">
-            <span class="tile"><span class="tilePlaceholder">${esc(prof.name.slice(0,2))}</span>
-            <span class="mark" style="--mark-border:${markColor(prof.type)}"></span></span>
+            ${iconHTML(prof.name,prof.type)}
             <span><span class="classNameTxt">${esc(prof.name)}</span><br>
             <span class="classSub">${CLASS_TYPE_LABEL[prof.type]}</span></span></div>`
           :`<div class="classCardEmpty"><span class="classNameTxt">직업 미등록</span>
@@ -531,17 +572,18 @@ function currentTabHTML(){
   if(!live&&!closed&&st&&st.status==='armed'){
     const s=Math.max(0,Math.floor((st.openAt-srvNow())/1000));
     return `<h1 class="title">거점전 설문조사</h1>
-      <p class="dateLine">연습 ${st.round}회차</p>
+      <p class="dateLine">거점 일시 ${fmtDate(st.openAt)} ${fmtTime(st.openAt)}</p>
       <p class="instruction">설문이 열리면 이 화면이 투표 화면으로 바뀝니다.</p>
       ${s<=0?'<p class="countdownSoon">곧 설문이 열립니다...</p>'
       :`<div class="countdown"><span class="countdownSegment">${pad(Math.floor(s/3600))}:${pad(Math.floor(s%3600/60))}:${pad(s%60)}</span></div>`}`;
   }
   return `<h1 class="title">거점전 설문조사</h1>
-  <p class="dateLine">연습 ${st&&st.round?st.round+'회차':'-'}</p>
+  <p class="dateLine">거점 일시 ${st&&st.openAt?fmtDate(st.openAt)+' '+fmtTime(st.openAt):'-'}</p>
   <p class="instruction">선택지는 하나만 선택해주세요. (부속인 경우 부속만 선택)</p>
   <div class="buttonRow">${VOTE_ORDER.map(t=>`
     <button class="voteButton ${myVote===t?'selected':''}" data-v="${t}"
       ${(!live||busy)?'disabled':''}>${VOTING_TYPE_LABEL[t]}</button>`).join('')}</div>
+  ${myVotedAt?`<p class="notice">${fmtDate(myVotedAt)} ${fmtTime(myVotedAt)}에 투표 완료</p>`:''}
   ${myRank?`<p class="message">서버 도착 ${myMs}ms · ${myRank}등</p>`:''}
   ${closed?'<p class="notice">투표가 마감되었습니다.</p>':''}
   ${!live&&!closed?'<p class="notice">아직 설문이 열리지 않았습니다.</p>':''}
@@ -614,21 +656,20 @@ function classesHTML(){
           <span class="stepTwoHint">${activeType?`${list.length}개`:'계열 먼저 선택'}</span></div>
         <div class="classGrid">${list.map(n=>`
           <button class="classTile ${selName===n&&activeType===(pickType||(prof&&prof.type))?'classTileSelected':''}" data-n="${esc(n)}">
-            <span class="tile"><span class="tilePlaceholder">${esc(n.slice(0,2))}</span>
-            <span class="mark" style="--mark-border:${markColor(activeType)}"></span></span>
+            ${iconHTML(n,activeType)}
             <span class="classTileName">${esc(n)}</span></button>`).join('')}</div>
       </div>
     </div>
     <footer class="classesFooter">
-      <div class="summaryBlock"><span class="summaryKicker">현재 선택</span>
+      <div class="summaryBlock"><span class="summaryKicker">선택한 직업</span>
         <p class="summaryTxt">${selName&&activeType
-          ?`<span class="summaryStrong">${esc(selName)}</span> <span class="summaryDim">(${CLASS_TYPE_LABEL[activeType]})</span>`
+          ?`<span class="summaryStrong">${CLASS_TYPE_LABEL[activeType]} · ${esc(selName)}</span>`
           :'<span class="summaryDim">선택 없음</span>'}</p></div>
       <div class="footerActions">
         ${savedMsg?`<span class="doneTxt">${savedMsg}</span>`:''}
-        <button class="resetButton" id="btnBackVote">투표로 돌아가기</button>
+        <button class="resetButton" id="btnReset">초기화</button>
         <button class="submitButton" id="btnSave" ${(!pickName||!pickType||saving)?'disabled':''}>
-          ${saving?'저장 중…':'이 직업으로 등록'}</button>
+          ${saving?'저장 중…':'등록하기'}</button>
       </div></footer></main>`;
 }
 
@@ -649,7 +690,7 @@ function render(){
   document.querySelectorAll('[data-n]').forEach(b=>b.onclick=()=>{
     pickName=b.dataset.n;savedMsg=null;render()});
   const sv=$('btnSave');if(sv)sv.onclick=submitClass;
-  const bv=$('btnBackVote');if(bv)bv.onclick=()=>navigate('/vote');
+  const br=$('btnReset');if(br)br.onclick=()=>{pickType=null;pickName=null;savedMsg=null;render()};
   const ht=$('ht');if(ht)ht.onclick=()=>{hostOpen=!hostOpen;render()};
   document.querySelectorAll('[data-d]').forEach(b=>b.onclick=async()=>{
     const d=Number(b.dataset.d);
@@ -687,7 +728,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(raw)
+        if not getattr(self, "_head_only", False):
+            self.wfile.write(raw)
 
     def _json(self, obj, code=200):
         self._send(json.dumps(obj, ensure_ascii=False), code=code)
@@ -701,11 +743,31 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return {}
 
+    def _serve_static(self, path):
+        """static/ 폴더의 이미지를 서빙. 없으면 404(프론트가 알아서 글자로 대체)."""
+        rel = unquote(path.lstrip("/"))
+        full = os.path.normpath(os.path.join(STATIC_DIR, rel))
+        # 상위 경로 탈출 방지
+        if not full.startswith(STATIC_DIR) or not os.path.isfile(full):
+            return self._json({"error": "not found"}, 404)
+        ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
+        with open(full, "rb") as f:
+            raw = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", "public, max-age=86400")
+        self.end_headers()
+        if not getattr(self, "_head_only", False):
+            self.wfile.write(raw)
+
     def do_GET(self):
         path = urlparse(self.path).path
         # 본사이트와 동일한 경로 구조: / (홈), /vote (투표), /classes (직업 등록)
         if path in ("/", "/vote", "/classes"):
             return self._send(HTML, "text/html; charset=utf-8")
+        if path.startswith(("/class-icons/", "/marks/", "/img/")):
+            return self._serve_static(path)
         if path == "/api/time":
             return self._json({"now": now_ms()})
         if path == "/api/state":
@@ -717,6 +779,14 @@ class Handler(BaseHTTPRequestHandler):
             with _lock:
                 return self._json({"profile": _profiles.get((q.get("nickname") or [""])[0])})
         return self._json({"error": "not found"}, 404)
+
+    def do_HEAD(self):
+        # 일부 프록시/브라우저가 HEAD를 먼저 보내므로 GET과 동일하게 처리 (본문만 생략)
+        self._head_only = True
+        try:
+            self.do_GET()
+        finally:
+            self._head_only = False
 
     def do_POST(self):
         arrival = now_ms()          # ★ 등수 기준: 요청이 서버에 도착한 시각
