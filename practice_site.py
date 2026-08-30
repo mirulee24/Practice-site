@@ -121,7 +121,8 @@ HTML = r"""<!DOCTYPE html>
 <title>거점전 선착순 연습</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Lora:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Nanum+Myeongjo:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <style>
 :root{--color-paper:#f3f2f2;--color-surface:#eae9e9;--color-ink:#201f1d;--color-ink-dim:#605d5d;
 --color-ink-faint:#7d7979;--color-hairline:#201f1d29;--color-rule:#201f1d1f;--color-accent:#b68235;
@@ -129,12 +130,14 @@ HTML = r"""<!DOCTYPE html>
 --color-dark:#1a1918;--color-dark-ink:#f3f2f2;--color-dark-ink-soft:#e2e0dd;--color-dark-ink-dim:#bab6b6;
 --color-dark-accent:#e1ad66;--color-dark-accent-bright:#facb8d;--color-mark-succession:#5b7fb5;
 --color-mark-awakening:#b0555f;--color-mark-neutral:#201f1d38;--shadow-card:0 3px 10px #2d2b2b1f;
---scrim-band:linear-gradient(180deg,transparent,#1a1918d1)}
+--scrim-band:linear-gradient(180deg,transparent,#1a1918d1);
+--shadow-modal:0 8px 28px #2d2b2b38;
+--scrim-dark-hero:linear-gradient(180deg,#1a1918db,#1a191880 42%,#1a1918f0)}
 :root{--font-korean-serif:"Nanum Myeongjo";--font-korean-sans:"Noto Sans KR";
---font-heading:"Cormorant Garamond",var(--font-korean-serif),Georgia,serif;
---font-prose:"Lora",var(--font-korean-serif),Georgia,serif;
---font-body:"Lora",var(--font-korean-sans),Georgia,sans-serif;
---font-mono:"JetBrains Mono",var(--font-korean-sans),ui-monospace,monospace;
+--font-heading:"Cinzel","Pretendard Variable",Pretendard,var(--font-korean-sans),serif;
+--font-prose:"Pretendard Variable",Pretendard,var(--font-korean-sans),sans-serif;
+--font-body:"Pretendard Variable",Pretendard,var(--font-korean-sans),sans-serif;
+--font-mono:"JetBrains Mono","Pretendard Variable",var(--font-korean-sans),ui-monospace,monospace;
 --background:var(--color-paper);--foreground:var(--color-ink);--card-bg:var(--color-paper);
 --border-color:var(--color-hairline);--muted:var(--color-ink-dim);--accent:var(--color-accent)}
 html{color-scheme:light;height:100%}
@@ -150,79 +153,75 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 /* ── SiteHeader ── */
 .siteHeader{border-bottom:1px solid var(--color-hairline);flex-wrap:wrap;align-items:center;
 gap:18.4px;padding:27.6px 46px 18.4px;display:flex}
-.brandBlock{align-items:baseline;gap:13.8px;margin-right:auto;display:flex}
-.brand{font-family:var(--font-heading);white-space:nowrap;font-size:22px;font-weight:600}
-.kicker{font-family:var(--font-mono);letter-spacing:.16em;color:var(--color-ink-dim);font-size:10px}
+.brandBlock{align-items:flex-end;gap:9px;margin-right:auto;display:flex}
+.brandIcon{object-fit:cover;border-radius:6px;width:28px;height:28px;display:block}
+.brand{font-family:var(--font-heading);white-space:nowrap;font-size:22px;font-weight:700}
+.kicker{font-family:var(--font-mono);letter-spacing:.16em;color:var(--color-ink-dim);font-size:11px}
 .nav{align-items:center;gap:18.4px;display:flex}
 .navLink,.navLinkSoon{color:var(--color-ink-dim);font-size:12.5px;cursor:pointer;background:0 0;border:none}
 .navLink:hover{color:var(--color-accent-deep)}
-.navLinkActive{color:var(--color-ink);border-bottom:1px solid var(--color-accent)}
+.navLinkActive{color:var(--color-ink);font-weight:600}
 .navLinkSoon{color:var(--color-ink-faint);cursor:default}
 .logoutButton{border:1px solid var(--color-hairline);color:var(--color-ink-dim);cursor:pointer;
-background:0 0;border-radius:4px;padding:6px 13.8px;font-size:11.5px;order:1}
+background:0 0;border-radius:4px;padding:6px 13.8px;font-size:13.5px;order:1}
 .logoutButton:hover{border-color:var(--color-accent);color:var(--color-accent-deep)}
 @media (max-width:768px){.siteHeader{gap:11px;padding:18.4px 22px}.brand{font-size:19px}
 .nav{flex-basis:100%;order:2;gap:15px}.navLink,.navLinkSoon{white-space:nowrap;font-size:11.5px}}
 
-/* ── 홈 ── */
-.homeMain{background:var(--color-paper);width:100%;max-width:1120px;min-height:100dvh;margin:0 auto}
-.hero{background:var(--color-dark);height:320px;position:relative;overflow:hidden}
-.heroScrim{pointer-events:none;background:var(--scrim-band);height:72%;position:absolute;bottom:0;left:0;right:0}
+/* ── 홈 (신규 page-module 기준) ── */
+.homeMain{background:var(--color-paper);width:100%;max-width:1120px;min-height:100dvh;
+color:var(--color-ink);margin:0 auto}
+.hero{background:var(--color-dark);border-radius:4px;height:320px;margin:0 46px;
+position:relative;overflow:hidden}
+.heroImage{object-fit:cover;width:100%;height:100%;display:block}
+.heroScrim{pointer-events:none;background:var(--scrim-band);height:72%;
+position:absolute;bottom:0;left:0;right:0}
 .heroPattern{position:absolute;inset:0;opacity:.5;
 background:radial-gradient(circle at 22% 28%,#3a3630 0,transparent 55%),
 radial-gradient(circle at 78% 12%,#2b2823 0,transparent 45%),
 repeating-linear-gradient(115deg,#1f1e1c 0 22px,#1a1918 22px 44px)}
-.heroContent{text-shadow:0 1px 4px #1a1918d9,0 0 18px #1a19188c;justify-content:space-between;
-align-items:flex-end;gap:36.8px;display:flex;position:absolute;bottom:27.6px;left:46px;right:46px}
-.heroKicker{font-family:var(--font-mono);letter-spacing:.04em;color:var(--color-dark-accent-bright);font-size:10.5px}
-.heroTitle{font-family:var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:.02em;
-color:var(--color-dark-ink);margin-top:9.2px;font-size:46px;font-weight:400;line-height:1.05}
-.heroActions{flex-wrap:wrap;align-items:center;gap:13.8px;margin-top:18.4px;display:flex}
-.heroButton,.heroButtonGhost{border-radius:4px;align-items:center;min-height:44px;padding:9.2px 22px;
-font-size:13.5px;display:inline-flex;cursor:pointer}
-.heroButton{border:1px solid var(--color-dark-accent);color:var(--color-dark-accent-bright);background:#e1ad6624}
-.heroButton:hover{background:#e1ad663d}
-.heroButtonGhost{color:var(--color-dark-ink-soft);border:1px solid #f3f2f247;background:0 0}
-.heroMyVote{font-family:var(--font-mono);color:var(--color-dark-ink-soft);font-size:11.5px}
 .homeBody{padding:27.6px 46px 46px}
 .columns{grid-template-columns:1fr 280px;align-items:start;gap:36.8px;display:grid}
-.sectionHeader{border-bottom:1px solid var(--color-hairline);justify-content:space-between;
-align-items:baseline;padding-bottom:9.2px;display:flex}
-.sectionHeaderSpaced{margin-top:36.8px}
-.sectionTitle{font-size:18px}
+.sectionHeader{justify-content:space-between;align-items:baseline;display:flex}
+.sectionTitle{letter-spacing:.08em;color:var(--color-ink-dim);font-size:13px;font-weight:600}
 .sectionMeta{font-family:var(--font-mono);color:var(--color-ink-dim);font-size:11px}
-.sectionLink{color:var(--color-accent-deep);font-size:11.5px;cursor:pointer}
+.sectionLink{color:var(--color-accent-deep);font-size:11px;cursor:pointer}
 .sectionLink:hover{color:var(--color-accent-deeper)}
 .dayGrid{grid-template-columns:repeat(3,1fr);gap:9.2px;margin-top:18.4px;display:grid}
-.dayCard{border:1px solid var(--color-hairline);background:0 0;border-radius:4px;flex-direction:column;
-gap:9.2px;min-height:84px;padding:13.8px 11px;display:flex}
-.dayCardLive{border-color:var(--color-accent);background:var(--color-accent-tint)}
-.dayCardTop{justify-content:space-between;align-items:baseline;display:flex}
-.dayLabel{font-family:var(--font-heading);color:var(--color-ink);font-size:24px;font-weight:600}
-.dayLabelLive{color:var(--color-accent-deeper)}
-.dayDate{font-family:var(--font-mono);color:var(--color-ink-dim);font-size:10.5px}
-.dayState{font-family:var(--font-mono);letter-spacing:.02em;color:var(--color-ink-dim);font-size:10px}
-.dayStateLive{color:var(--color-accent-deep)}
+.dayCard{border:1px solid var(--color-hairline);background:var(--color-surface);border-radius:4px;
+flex-direction:column;min-height:124px;padding:17px 16px 15px;display:flex}
+.dayCardLive{border-color:var(--color-accent);background:var(--color-accent-tint);
+box-shadow:inset 2px 0 0 var(--color-accent)}
+.dayCardTop{flex-direction:column;align-items:flex-start;gap:10px;display:flex}
+.dayLabel{letter-spacing:.01em;color:var(--color-ink);font-size:22px;font-weight:700;line-height:1}
+.dayCardLive .dayLabel{color:var(--color-accent-deeper)}
+.dayDate{font-family:var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:.02em;
+color:var(--color-ink-dim);font-size:12px;line-height:1}
+.dayCardLive .dayDate{color:var(--color-accent-deep)}
+.dayState{letter-spacing:-.01em;white-space:nowrap;color:var(--color-ink-dim);align-self:flex-end;
+align-items:center;gap:6px;margin-top:auto;padding-top:14px;font-size:13.5px;font-weight:500;
+display:inline-flex}
+.dayState:before{content:"";background:var(--color-ink-faint);border-radius:50%;flex:none;
+width:5px;height:5px}
+.dayStateLive{color:var(--color-accent-deep);font-weight:600}
+.dayStateLive:before{background:var(--color-accent)}
 .dayVote{color:var(--color-ink-faint);margin-top:auto;font-size:12.5px}
 .dayVoteSet{color:var(--color-accent-deep)}
-.classCardHome{border:1px solid var(--color-accent);background:var(--color-accent-tint);border-radius:4px;
-align-items:center;gap:13.8px;margin-top:18.4px;padding:9.2px 11px;display:flex}
+.classCardHome{border:1px solid var(--color-accent);background:var(--color-accent-tint);
+border-radius:4px;align-items:center;gap:13.8px;margin-top:18.4px;padding:9.2px 11px;display:flex}
 .classCardEmpty{border:1px dashed #201f1d42;border-radius:4px;flex-direction:column;gap:4px;
 margin-top:18.4px;padding:13.8px 11px;display:flex}
 .classNameTxt{color:var(--color-accent-deeper);font-size:13.5px}
 .classCardEmpty .classNameTxt{color:var(--color-ink)}
 .classSub{color:var(--color-accent-deep);font-size:11px}
 .classCardEmpty .classSub{color:var(--color-ink-dim);line-height:1.5}
-.classNote{color:#201f1db8;margin-top:13.8px;font-size:11.5px;line-height:1.75}
-@media (max-width:768px){.hero{height:190px}
+.classNote{color:#201f1db8;margin-top:13.8px;font-size:11px;line-height:1.75}
+@media (max-width:768px){.hero{height:190px;margin:0 22px}
 .heroScrim{background:linear-gradient(#1a19184d 0%,#1a191880 42%,#1a1918f2 100%);height:100%}
-.heroContent{bottom:18.4px;left:22px;right:22px;flex-direction:column;align-items:flex-start;gap:13.8px}
-.heroTitle{margin-top:4px;font-size:26px;line-height:1.15}
 .homeBody{padding:18.4px 22px 36.8px}.columns{grid-template-columns:1fr;gap:27.6px}
-.dayGrid{grid-template-columns:repeat(3,1fr);gap:6px}
-.dayCard{text-align:center;align-items:center;gap:4px;min-height:0;padding:9.2px 4px}
-.dayCardTop{flex-direction:column;align-items:center;gap:2px}
-.dayLabel{font-size:17px}.dayDate{font-size:9.5px}.dayVote{display:none}}
+.dayGrid{gap:6px}.dayCard{min-height:96px;padding:12px 10px 11px}
+.dayLabel{font-size:18px}.dayDate{font-size:10px}
+.dayState{padding-top:10px;font-size:11.5px}.dayVote{display:none}}
 
 /* ── 로그인 ── */
 .loginMain{background:var(--color-paper);justify-content:center;align-items:center;min-height:100dvh;
@@ -488,8 +487,10 @@ async function submitClass(){
 function siteHeaderHTML(active){
   const link=(p,l)=>`<span class="navLink ${route===p?'navLinkActive':''}" data-go="${p}">${l}</span>`;
   return `<header class="siteHeader">
-    <div class="brandBlock"><span class="brand">아시바당</span>
-    <span class="kicker">연습 · PRACTICE</span></div>
+    <div class="brandBlock">
+      <img class="brandIcon" src="/img/brand.png" alt="" onerror="this.style.display='none'">
+      <span class="brand">아시바당</span>
+      <span class="kicker">연습 · PRACTICE</span></div>
     <nav class="nav">
       ${link('/','홈')}${link('/vote','투표')}${link('/classes','직업')}
       <span class="navLinkSoon">기록 (준비중)</span>
@@ -519,37 +520,36 @@ function renderLogin(){
 function homeHTML(){
   const live=isLive();
   const armed=st&&st.status==='armed'&&!live;
-  let heroKicker,heroTitle;
-  if(live){heroKicker='설문 진행중';heroTitle='지금 신청 가능';}
-  else if(armed){
-    const s=Math.max(0,Math.floor((st.openAt-srvNow())/1000));
-    heroKicker='다음 설문까지';
-    heroTitle=`${pad(Math.floor(s/3600))}:${pad(Math.floor(s%3600/60))}:${pad(s%60)}`;
-  }else{heroKicker='대기';heroTitle=st&&st.status==='closed'?'설문 마감':'예정된 설문 없음';}
-
-  const cards=(history.length?history:[]).slice(0,6).map(h=>`
-    <div class="dayCard"><div class="dayCardTop">
+  // 지난 연습 + 현재 라운드를 한 그리드에 (본사이트 dayGrid 스타일)
+  const cards=[];
+  if(st&&st.round&&(live||armed)){
+    cards.push(`<div class="dayCard dayCardLive"><div class="dayCardTop">
+      <span class="dayLabel">${st.round}회</span>
+      <span class="dayDate">${fmtTime(st.openAt)}</span></div>
+      <span class="dayState dayStateLive">${live?'진행중':'대기'}</span>
+      <span class="dayVote ${myVote?'dayVoteSet':''}">${myVote?VOTING_TYPE_LABEL[myVote]:'미신청'}</span></div>`);
+  }
+  (history||[]).slice(0,6-cards.length).forEach(h=>{
+    cards.push(`<div class="dayCard"><div class="dayCardTop">
       <span class="dayLabel">${h.round}회</span>
-      <span class="dayDate">${new Date(h.openAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}</span>
-    </div><span class="dayState">종료</span>
-    <span class="dayVote">${h.count}명 참여</span></div>`).join('');
+      <span class="dayDate">${fmtTime(h.openAt)}</span></div>
+      <span class="dayState">종료</span>
+      <span class="dayVote">${h.count}명</span></div>`);
+  });
 
   return `${siteHeaderHTML()}<main class="homeMain">
-    <section class="hero"><div class="heroPattern"></div><div class="heroScrim"></div>
-      <div class="heroContent"><div>
-        <p class="heroKicker">${heroKicker}</p>
-        <h1 class="heroTitle">${heroTitle}</h1>
-        <div class="heroActions">
-          <button class="heroButton" data-go="/vote">투표하러 가기</button>
-          <button class="heroButtonGhost" data-go="/classes">직업 등록</button>
-        </div></div>
-        <p class="heroMyVote">${myVote?`내 선택 · ${VOTING_TYPE_LABEL[myVote]}`:'미신청'}</p>
-      </div></section>
+    <section class="hero">
+      <div class="heroPattern"></div>
+      <img class="heroImage" src="/img/Wallpaper.jpg" alt=""
+        onerror="this.style.display='none'">
+      <div class="heroScrim"></div>
+    </section>
     <div class="homeBody"><div class="columns">
       <div>
-        <div class="sectionHeader"><h2 class="sectionTitle">지난 연습</h2>
-          <span class="sectionMeta">최근 ${Math.min(history.length,6)}회</span></div>
-        <div class="dayGrid">${cards||'<div class="dayCard"><span class="dayState">기록 없음</span></div>'}</div>
+        <div class="sectionHeader"><h2 class="sectionTitle">연습 기록</h2>
+          <span class="sectionMeta">최근 ${cards.length}회</span></div>
+        <div class="dayGrid">${cards.length?cards.join('')
+          :'<div class="dayCard"><span class="dayState">기록 없음</span></div>'}</div>
       </div>
       <aside>
         <div class="sectionHeader"><h2 class="sectionTitle">내 등록 직업</h2>
