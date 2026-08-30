@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-거점전 선착순 신청 연습 사이트 (신규 디자인 대응 / 웹 전용)
+거점전 선착순 신청 연습 사이트
 ────────────────────────────────────────────────────────────
-· 본사이트 개편(종이 테마 · /vote · /classes 분리)에 맞춰 새로 제작
-· 등수는 "요청이 서버에 도착한 순서"로 결정 (실전과 동일 기준)
+· 본사이트 개편(종이 테마 · /vote · /classes 분리)에 맞춰 수정
+· 등수는 "요청이 서버에 도착한 순서"로 결정
 · 직업은 브라우저에 저장 후 접속 시 서버로 자동 재등록
   → Render 슬립/재배포로 서버가 초기화돼도 다시 고를 필요 없음
 · 표준 라이브러리만 사용
@@ -37,7 +37,7 @@ _lock = threading.Lock()
 _state = {"id": "none", "status": "idle", "openAt": 0.0, "round": 0}
 _entries = {}     # roundId -> [ {...} ]
 _profiles = {}    # nickname -> {"name":..., "type":...}
-_history = []     # 최근 라운드 요약 (최대 6개)
+_history = []     # 최근 테스트 요약 (최대 6개)
 _last = None
 
 
@@ -95,7 +95,7 @@ def record_vote(nickname, rid, vtype, arrival):
         mine = next((r for r in rows if r["nickname"] == nickname), None)
         dup = False
         if mine:
-            # 실전처럼 선택 변경은 허용하되, 등수는 최초 도착 시각으로 고정
+            # 등수는 최초 도착 시각으로 고정
             dup = (mine["votingType"] == vtype)
             mine["votingType"] = vtype
         else:
@@ -509,8 +509,8 @@ function renderLogin(){
   lastHTML='';
   app.innerHTML=`<main class="loginMain"><div class="loginHero">
     <h1 class="loginBrand">아시바당</h1>
-    <p class="loginTagline">거점전 선착순 신청 연습장</p>
-    <p class="kicker">동일한 주소로 접속한 길드원 전원이 함께 참여합니다</p>
+    <p class="loginTagline">거점전 선착순 신청 연습</p>
+    <p class="kicker">동일한 주소로 접속한 인원 전원이 함께 참여합니다</p>
     <div class="loginRow"><input class="loginInput" id="ni" placeholder="가문명 입력" maxlength="16">
     <button class="loginButton" id="jb">입장</button></div>
   </div></main>`;
@@ -567,7 +567,7 @@ function homeHTML(){
             <span class="classSub">${CLASS_TYPE_LABEL[prof.type]}</span></span></div>`
           :`<div class="classCardEmpty"><span class="classNameTxt">직업 미등록</span>
             <span class="classSub">등록해두면 실전에서 신청 버튼만 누르면 됩니다.</span></div>`}
-        <p class="classNote">등수는 요청이 서버에 도착한 순서로 정해집니다. 실전과 동일한 기준입니다.</p>
+        <p class="classNote">등수는 요청이 서버에 도착한 순서로 정해집니다.</p>
       </aside>
     </div></div></main>`;
 }
@@ -799,7 +799,7 @@ class Handler(BaseHTTPRequestHandler):
             self._head_only = False
 
     def do_POST(self):
-        arrival = now_ms()          # ★ 등수 기준: 요청이 서버에 도착한 시각
+        arrival = now_ms()          # 등수 기준: 요청이 서버에 도착한 시각
         path = urlparse(self.path).path
         data = self._read_body()
 
