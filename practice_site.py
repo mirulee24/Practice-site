@@ -402,7 +402,7 @@ const ELSE_C=["아처","샤이","스칼라","데드아이","오공","세라핌"]
 const DUAL_C=["워리어","소서러","레인저","자이언트","금수랑","무사","발키리","매화","위자드","위치",
 "쿠노이치","닌자","다크나이트","격투가","미스틱","란","가디언","하사신","노바","세이지","커세어",
 "드라카니아","우사","매구","도사","에이전트"];
-const clsFor=t=>t==="Else"?ELSE_C:DUAL_C;
+const clsFor=t=>(t==="Else"?ELSE_C:DUAL_C).slice().sort();
 const markColor=t=>t==="Succession"?"var(--color-mark-succession)"
   :t==="Awaken"?"var(--color-mark-awakening)":"var(--color-mark-neutral)";
 
