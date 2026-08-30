@@ -668,15 +668,20 @@ function classesHTML(){
           <span class="branchLabel">${CLASS_TYPE_LABEL[t]}</span>
           <span class="branchSub">${CLASS_TYPE_SUBLABEL[t]}</span></button>`).join('')}</div>
       <div class="divider"></div>
-      <div class="stepTwo ${activeType?'stepTwoActive':''}">
-        <div class="stepTwoHeader"><div>
-          <p class="ckicker">STEP 02</p>
-          <h2 class="stepTitle">직업 선택</h2></div>
+    <div class="stepTwo ${activeType?'stepTwoActive':''}">
+        <div class="stepTwoHeader">
+          <div>
+            <p class="ckicker">STEP 02</p>
+            <h2 class="stepTitle">직업 선택</h2>
+          </div>
           <span class="stepTwoHint">${activeType ? CLASS_TYPE_LABEL[activeType] + ' · ' + list.length + '개 직업' : '계열 먼저 선택'}</span>
+        </div>
         <div class="classGrid">${list.map(n=>`
           <button class="classTile ${selName===n&&activeType===(pickType||(prof&&prof.type))?'classTileSelected':''}" data-n="${esc(n)}">
             ${iconHTML(n,activeType)}
-            <span class="classTileName">${esc(n)}</span></button>`).join('')}</div>
+            <span class="classTileName">${esc(n)}</span>
+          </button>`).join('')}
+        </div>
       </div>
     </div>
     <footer class="classesFooter">
