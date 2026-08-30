@@ -722,11 +722,12 @@ function render(){
 
 window.addEventListener('popstate',()=>{route=location.pathname;render();});
 
-(async function(){
-  await syncClock();
-  await syncProfToServer();
-  await pull();
-  render();
+(function(){
+  render(); // 데이터를 기다리지 않고 화면 즉시 렌더링
+  pull(); // 백그라운드에서 서버 상태 로드
+  syncClock().then(() => {
+    syncProfToServer();
+  }); // 백그라운드에서 시간 동기화 및 프로필 전송
   setInterval(pull,1000);
   setInterval(()=>{if(st&&st.status==='armed'&&!isLive())render();},200);
   setInterval(syncClock,60000);
