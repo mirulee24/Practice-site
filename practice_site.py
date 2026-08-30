@@ -292,6 +292,11 @@ color:var(--color-ink-dim);font-weight:700}
 /* ── 직업 등록 페이지 ── */
 .classesMain{background:var(--color-paper);width:100%;max-width:860px;min-height:100dvh;
 flex-direction:column;margin:0 auto;display:flex}
+.classesHeader{border-bottom:1px solid var(--color-hairline);justify-content:space-between;
+align-items:center;gap:13.8px;padding:18.4px 36.8px;display:flex}
+.cbrand{font-family:var(--font-heading);white-space:nowrap;font-size:19px;font-weight:600}
+.headerKicker{font-family:var(--font-mono);letter-spacing:.04em;color:var(--color-ink-dim);font-size:10px}
+@media (max-width:768px){.classesHeader{padding:18.4px 22px}}
 .classesBody{flex:1;padding:36.8px}
 .ckicker{font-family:var(--font-mono);letter-spacing:.16em;color:var(--color-accent-deep);font-size:10.5px}
 .stepTitle{margin-top:4px;font-size:26px;font-weight:400}
@@ -623,10 +628,11 @@ function pastTabHTML(){
 }
 function voteHTML(){
   const tabs={current:'현재 설문',past:'지난 설문'};
-  return `${siteHeaderHTML()}<main class="voteMain">
+    return `<main class="voteMain">
     <div class="voteHeaderRow">
       <span class="homeLink" data-go="/">← 홈</span>
-      <div class="headerRight"><span class="nickname">${esc(nick)}</span></div>
+      <div class="headerRight"><span class="nickname">${esc(nick)}</span>
+        <button class="logoutButton" id="btnLogout">로그아웃</button></div>
     </div>
     <div class="card">
       <div class="tabBar" role="tablist">${Object.keys(tabs).map(k=>
@@ -647,10 +653,15 @@ function classesHTML(){
   const activeType=pickType||(prof&&prof.type)||null;
   const selName=pickName||(prof&&prof.name)||null;
   const list=activeType?clsFor(activeType):[];
-  return `${siteHeaderHTML()}<main class="classesMain">
+  return `<main class="classesMain">
+    <header class="classesHeader">
+      <div class="brandBlock"><span class="cbrand">아시바당</span>
+        <span class="headerKicker">직업 등록</span></div>
+      <span class="homeLink" data-go="/">← 홈으로</span>
+    </header>
     <div class="classesBody">
       <p class="ckicker">STEP 01</p>
-      <h1 class="stepTitle">직업 계열을 선택하세요</h1>
+      <h1 class="stepTitle">계열 선택</h1>
       <div class="branchRow">${Object.keys(CLASS_TYPE_LABEL).map((t,i)=>`
         <button class="branchCard ${activeType===t?'branchCardSelected':''}" data-t="${t}">
           <span class="branchNum">0${i+1}</span>
@@ -660,8 +671,8 @@ function classesHTML(){
       <div class="stepTwo ${activeType?'stepTwoActive':''}">
         <div class="stepTwoHeader"><div>
           <p class="ckicker">STEP 02</p>
-          <h2 class="stepTitle">직업을 선택하세요</h2></div>
-          <span class="stepTwoHint">${activeType?`${list.length}개`:'계열 먼저 선택'}</span></div>
+          <h2 class="stepTitle">직업 선택</h2></div>
+          <span class="stepTwoHint">${activeType?${CLASS_TYPE_LABEL[activeType]} · ${list.length}개 직업:'계열 먼저 선택'}</span></div>
         <div class="classGrid">${list.map(n=>`
           <button class="classTile ${selName===n&&activeType===(pickType||(prof&&prof.type))?'classTileSelected':''}" data-n="${esc(n)}">
             ${iconHTML(n,activeType)}
