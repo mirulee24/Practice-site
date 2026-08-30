@@ -151,7 +151,7 @@ button{font-family:inherit}
 a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
 
 /* ── SiteHeader ── */
-.siteHeader{border-bottom:1px solid var(--color-hairline);flex-wrap:wrap;align-items:center;
+.siteHeader{width:100%;max-width:1120px;margin:0 auto;flex-wrap:wrap;align-items:center;
 gap:18.4px;padding:27.6px 46px 18.4px;display:flex}
 .brandBlock{align-items:flex-end;gap:9px;margin-right:auto;display:flex}
 .brandIcon{object-fit:cover;border-radius:6px;width:28px;height:28px;display:block}
@@ -498,7 +498,7 @@ function siteHeaderHTML(active){
       <span class="brand">아시바당</span>
       <span class="kicker">연습 · PRACTICE</span></div>
     <nav class="nav">
-      ${link('/','홈')}${link('/vote','투표')}${link('/classes','직업')}
+      ${link('/','홈')}${link('/vote','투표')}${link('/classes','직업 등록')}
       <span class="navLinkSoon">기록 (준비중)</span>
       <button class="logoutButton" id="btnLogout">가문명 변경</button>
     </nav></header>`;
