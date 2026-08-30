@@ -506,6 +506,7 @@ function siteHeaderHTML(active){
 
 // ── 로그인 ──
 function renderLogin(){
+  if($('ni'))return;   //
   lastHTML='';
   app.innerHTML=`<main class="loginMain"><div class="loginHero">
     <h1 class="loginBrand">아시바당</h1>
