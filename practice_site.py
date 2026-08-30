@@ -672,7 +672,7 @@ function classesHTML(){
         <div class="stepTwoHeader"><div>
           <p class="ckicker">STEP 02</p>
           <h2 class="stepTitle">직업 선택</h2></div>
-          <span class="stepTwoHint">${activeType?${CLASS_TYPE_LABEL[activeType]} · ${list.length}개 직업:'계열 먼저 선택'}</span></div>
+          <span class="stepTwoHint">${activeType ? CLASS_TYPE_LABEL[activeType] + ' · ' + list.length + '개 직업' : '계열 먼저 선택'}</span>
         <div class="classGrid">${list.map(n=>`
           <button class="classTile ${selName===n&&activeType===(pickType||(prof&&prof.type))?'classTileSelected':''}" data-n="${esc(n)}">
             ${iconHTML(n,activeType)}
