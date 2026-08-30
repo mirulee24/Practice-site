@@ -375,16 +375,22 @@ const CLASS_EN={워리어:"Warrior",소서러:"Sorceress",레인저:"Ranger",자
 세이지:"Sage",커세어:"Corsair",드라카니아:"Drakania",우사:"Woosa",매구:"Maegu",
 스칼라:"Scholar",도사:"Dosa",데드아이:"Deadeye",오공:"WuKong",세라핌:"Serapin",에이전트:"Agent"};
 const iconSrc=n=>CLASS_EN[n]?`/class-icons/Class_Icon_${CLASS_EN[n].replace(/ /g,"_")}.png`:"";
+// 한 번 실패한 이미지는 기억해두고 다시 요청하지 않는다 (깜빡임 방지)
+const IMG_FAIL=new Set();
+window.__imgFail=function(el){IMG_FAIL.add(el.getAttribute('src'));el.style.display='none';
+  const ph=el.nextElementSibling; if(ph)ph.style.display='flex';
+  lastHTML='';};  // 다음 렌더에 반영되도록
 const MARK_SRC={Succession:"/marks/succession.png",Awaken:"/marks/awakening.png"};
 // 아이콘 파일이 없으면 글자로 자동 대체
 function iconHTML(name,type,cls){
-  const src=iconSrc(name), mark=MARK_SRC[type]||"";
+  let src=iconSrc(name); const mark=MARK_SRC[type]||"";
+  const useImg=src&&!IMG_FAIL.has(src);           // 실패 이력이 있으면 글자만 표시
+  const useMark=mark&&!IMG_FAIL.has(mark);
   return `<span class="tile ${cls||''}">
-    ${src?`<img class="tileImg" src="${src}" alt="${esc(name)}"
-       onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:''}
-    <span class="tilePlaceholder" ${src?'style="display:none"':''}>${esc(name.slice(0,2))}</span>
+    ${useImg?`<img class="tileImg" src="${src}" alt="${esc(name)}" onerror="__imgFail(this)">`:''}
+    <span class="tilePlaceholder" ${useImg?'style="display:none"':''}>${esc(name.slice(0,2))}</span>
     <span class="mark" style="--mark-border:${markColor(type)}">
-      ${mark?`<img class="markImg" src="${mark}" alt="" onerror="this.remove()">`:''}</span></span>`;
+      ${useMark?`<img class="markImg" src="${mark}" alt="" onerror="__imgFail(this)">`:''}</span></span>`;
 }
 const CLASS_TYPE_SUBLABEL={Succession:"주 무기 계열",Awaken:"각성 무기 계열",Else:"개방 · 재능 계열"};
 const ELSE_C=["아처","샤이","스칼라","데드아이","오공","세라핌"];
@@ -488,7 +494,7 @@ function siteHeaderHTML(active){
   const link=(p,l)=>`<span class="navLink ${route===p?'navLinkActive':''}" data-go="${p}">${l}</span>`;
   return `<header class="siteHeader">
     <div class="brandBlock">
-      <img class="brandIcon" src="/img/brand.png" alt="" onerror="this.style.display='none'">
+      ${IMG_FAIL.has('/img/brand.png')?'':`<img class="brandIcon" src="/img/brand.png" alt="" onerror="__imgFail(this)">`}
       <span class="brand">아시바당</span>
       <span class="kicker">연습 · PRACTICE</span></div>
     <nav class="nav">
@@ -500,6 +506,7 @@ function siteHeaderHTML(active){
 
 // ── 로그인 ──
 function renderLogin(){
+  lastHTML='';
   app.innerHTML=`<main class="loginMain"><div class="loginHero">
     <h1 class="loginBrand">아시바당</h1>
     <p class="loginTagline">거점전 선착순 신청 연습장</p>
@@ -540,8 +547,8 @@ function homeHTML(){
   return `${siteHeaderHTML()}<main class="homeMain">
     <section class="hero">
       <div class="heroPattern"></div>
-      <img class="heroImage" src="/img/Wallpaper.jpg" alt=""
-        onerror="this.style.display='none'">
+      ${IMG_FAIL.has('/img/Wallpaper.jpg')?''
+        :`<img class="heroImage" src="/img/Wallpaper.jpg" alt="" onerror="__imgFail(this)">`}
       <div class="heroScrim"></div>
     </section>
     <div class="homeBody"><div class="columns">
@@ -674,11 +681,14 @@ function classesHTML(){
 }
 
 // ── 렌더 ──
+let lastHTML='';
 function render(){
   if(!nick)return renderLogin();
-  if(route==='/vote')app.innerHTML=voteHTML();
-  else if(route==='/classes')app.innerHTML=classesHTML();
-  else app.innerHTML=homeHTML();
+  const html=route==='/vote'?voteHTML():route==='/classes'?classesHTML():homeHTML();
+  // 내용이 그대로면 DOM을 건드리지 않는다 → 이미지가 다시 로드되지 않아 깜빡이지 않음
+  if(html===lastHTML)return;
+  lastHTML=html;
+  app.innerHTML=html;
 
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>navigate(b.dataset.go));
   const lo=$('btnLogout');
