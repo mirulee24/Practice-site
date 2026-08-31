@@ -584,11 +584,14 @@ function currentTabHTML(){
   const closed=st&&st.status==='closed';
   if(!live&&!closed&&st&&st.status==='armed'){
     const s=Math.max(0,Math.floor((st.openAt-srvNow())/1000));
+    const d=Math.floor(s/86400), hh=Math.floor(s%86400/3600),
+          mm=Math.floor(s%3600/60), ss=s%60;
     return `<h1 class="title">거점전 설문조사</h1>
       <p class="dateLine">거점 일시 ${fmtDate(st.openAt)} ${fmtTime(st.openAt)}</p>
-      <p class="instruction">설문이 열리면 이 화면이 투표 화면으로 바뀝니다.</p>
-      ${s<=0?'<p class="countdownSoon">곧 설문이 열립니다...</p>'
-      :`<div class="countdown"><span class="countdownSegment">${pad(Math.floor(s/3600))}:${pad(Math.floor(s%3600/60))}:${pad(s%60)}</span></div>`}`;
+      <p class="instruction">투표는 ${fmtTime(st.openAt)}에 열립니다. 모두 같은 시각에 열리며, 이 화면이 그대로 투표 화면으로 바뀝니다.</p>
+      <div class="countdown">
+        ${d>0?`<span class="countdownSegment">${d}일</span>`:''}
+        <span class="countdownSegment">${pad(hh)}:${pad(mm)}:${pad(ss)}</span></div>`;
   }
   return `<h1 class="title">거점전 설문조사</h1>
   <p class="dateLine">거점 일시 ${st&&st.openAt?fmtDate(st.openAt)+' '+fmtTime(st.openAt):'-'}</p>
