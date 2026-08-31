@@ -151,7 +151,7 @@ button{font-family:inherit}
 a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
 
 /* ── SiteHeader ── */
-.siteHeader{width:100%;max-width:1120px;margin:0 auto;flex-wrap:wrap;align-items:center;
+.siteHeader{box-sizing:border-box;width:100%;max-width:1120px;margin:0 auto;flex-wrap:wrap;align-items:center;
 gap:18.4px;padding:27.6px 46px 18.4px;display:flex}
 .brandBlock{align-items:flex-end;gap:9px;margin-right:auto;display:flex}
 .brandIcon{object-fit:cover;border-radius:6px;width:28px;height:28px;display:block}
@@ -238,14 +238,16 @@ color:var(--color-accent-deeper);border-radius:4px;padding:12px 22px;font-size:1
 .loginButton:hover{border-color:var(--color-accent-deep)}
 
 /* ── 투표 ── */
-.voteMain{flex-direction:column;align-items:center;gap:16px;min-height:100dvh;padding:24px 16px 48px;display:flex}
-.voteHeaderRow{justify-content:space-between;align-items:center;width:100%;max-width:480px;display:flex}
+.voteMain{background:var(--color-paper);width:100%;max-width:1120px;min-height:100dvh;
+color:var(--color-ink);flex-direction:column;align-items:center;margin:0 auto;display:flex}
+.content{box-sizing:border-box;width:100%;max-width:512px;padding:8px 16px 48px}
+@media (min-width:1024px){.content{max-width:912px}}
 .homeLink{color:var(--color-ink-dim);font-size:.85rem;font-weight:600;cursor:pointer}
 .homeLink:hover{color:var(--color-accent-deep)}
 .headerRight{align-items:center;gap:12px;display:flex}
-.nickname{font-weight:600}
+.nickname{color:var(--color-ink);white-space:nowrap;order:1;font-size:13.5px;font-weight:600}
 .card{border:1px solid var(--color-hairline);background:var(--card-bg);border-radius:16px;width:100%;
-max-width:480px;padding:28px 24px}
+padding:28px 24px}
 .title{margin:0 0 8px;font-size:1.25rem}
 .dateLine{margin:0 0 4px;font-weight:600}
 .instruction{color:var(--muted);margin:0 0 20px;font-size:.875rem}
@@ -275,7 +277,7 @@ font-size:12.5px;display:inline-block;cursor:pointer}
 .summaryList{flex-direction:column;gap:8px;margin:16px 0 0;padding:0;list-style:none;display:flex}
 .summaryItem{border:1px solid var(--color-hairline);border-radius:8px;justify-content:space-between;
 padding:10px 12px;font-size:.9rem;display:flex}
-@media (min-width:1024px){.voteHeaderRow,.card{max-width:880px}}
+
 
 /* ── 순위 (연습 전용) ── */
 .rankItem{border:1px solid var(--color-hairline);border-radius:4px;align-items:center;gap:10px;
@@ -631,12 +633,9 @@ function pastTabHTML(){
 }
 function voteHTML(){
   const tabs={current:'현재 설문',past:'지난 설문'};
-    return `<main class="voteMain">
-    <div class="voteHeaderRow">
-      <span class="homeLink" data-go="/">← 홈</span>
-      <div class="headerRight"><span class="nickname">${esc(nick)}</span>
-        <button class="logoutButton" id="btnLogout">로그아웃</button></div>
-    </div>
+    // 신규 사이트: 투표 페이지도 공용 헤더를 쓰고, 카드는 content 래퍼 안에 들어간다
+    return `${siteHeaderHTML()}<main class="voteMain">
+    <div class="content">
     <div class="card">
       <div class="tabBar" role="tablist">${Object.keys(tabs).map(k=>
         `<button class="tabButton ${tab===k?'tabButtonActive':''}" data-tab="${k}">${tabs[k]}</button>`).join('')}</div>
@@ -648,7 +647,7 @@ function voteHTML(){
         <button class="hostBtn" data-d="30">30초 후 오픈</button>
         <button class="hostBtn" data-d="-1">마감</button></div>
         <p class="notice" style="font-size:11.5px">설문을 열면 접속 중인 모두의 화면이 동시에 카운트다운으로 바뀝니다.</p>`:''}</div>
-    </div></main>`;
+    </div></div></main>`;
 }
 
 // ── 직업 등록 ──
