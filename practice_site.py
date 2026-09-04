@@ -278,7 +278,6 @@ font-size:12.5px;display:inline-block;cursor:pointer}
 .summaryItem{border:1px solid var(--color-hairline);border-radius:8px;justify-content:space-between;
 padding:10px 12px;font-size:.9rem;display:flex}
 
-
 /* ── 순위 (연습 전용) ── */
 .rankItem{border:1px solid var(--color-hairline);border-radius:4px;align-items:center;gap:10px;
 padding:9px 12px;font-size:.9rem;display:flex}
@@ -507,6 +506,7 @@ function siteHeaderHTML(active){
     <nav class="nav">
       ${link('/','홈')}${link('/vote','투표')}${link('/classes','직업 등록')}
       <span class="navLinkSoon">기록 (준비중)</span>
+      ${nick?`<span class="nickname">${esc(nick)}</span>`:''}
       <button class="logoutButton" id="btnLogout">가문명 변경</button>
     </nav></header>`;
 }
